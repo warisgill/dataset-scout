@@ -32,6 +32,8 @@ dependencies = [
   "structlog>=24.1",
   "pyyaml>=6.0",
   "tomli>=2.0; python_version<'3.11'",
+  "huggingface-hub>=1.13.0",
+  "httpx>=0.28.1",
 ]
 
 [project.optional-dependencies]
@@ -54,7 +56,7 @@ dscout = "dataset_scout.cli:app"
 
 # Source plugins are registered via this entry-point group (M1+ will populate).
 [project.entry-points."dataset_scout.sources"]
-# huggingface = "dataset_scout.sources.huggingface:HuggingFaceSource"
+huggingface = "dataset_scout.sources.huggingface:HuggingFaceSource"
 # kaggle      = "dataset_scout.sources.kaggle:KaggleSource"
 # pwc         = "dataset_scout.sources.pwc:PapersWithCodeSource"
 

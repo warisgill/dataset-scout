@@ -79,8 +79,53 @@ def recon(
     use_llm_parser: Annotated[bool, typer.Option("--use-llm-parser")] = False,
     out: Annotated[Path, typer.Option("--out", help="Output directory.")] = Path("dscout-out"),
 ) -> None:
-    err.print("[yellow]recon is not implemented yet (lands in M1).[/yellow]")
-    raise typer.Exit(code=2)
+    from dataset_scout.context import ScoutContext
+    from dataset_scout.errors import DatasetScoutError
+    from dataset_scout.pipeline import run_recon
+    from dataset_scout.render import write_recon_report, write_results_json
+
+    if review_intent or review_decomposition or use_llm_parser:
+        err.print(
+            "[dim]note: --review-intent / --review-decomposition / "
+            "--use-llm-parser are accepted but no-op in this milestone "
+            "(decomposition + LLM parser land in M2).[/dim]"
+        )
+    # `--no-explore` is the M1a default; the flag is silently absorbed.
+    _ = no_explore
+
+    overrides: dict[str, object] = {"min_strategy_confidence": min_strategy_confidence}
+    if detection_target:
+        overrides["detection_target"] = detection_target
+    if deployment_context:
+        overrides["deployment_context"] = deployment_context
+    if language:
+        overrides["language"] = list(language)
+    if license:
+        overrides["license"] = list(license)
+    if threat_families:
+        overrides["threat_families"] = list(threat_families)
+
+    ctx = ScoutContext.from_env(is_tty=sys.stderr.isatty())
+
+    try:
+        result = run_recon(brief, ctx=ctx, parser_overrides=overrides)
+    except DatasetScoutError as e:
+        err.print(f"[red]error:[/red] {e}")
+        raise typer.Exit(code=1) from e
+
+    json_path = write_results_json(result, out)
+    md_path = write_recon_report(result, out)
+
+    err.print(
+        f"[green]✔[/green] {len(result.candidates)} candidate(s) "
+        f"from {', '.join(result.sources_searched) or '(no source)'} "
+        f"in {result.elapsed_seconds:.2f}s"
+    )
+    err.print(f"  - results: {json_path}")
+    err.print(f"  - report:  {md_path}")
+    if result.notices:
+        for n in result.notices:
+            err.print(f"  [yellow]![/yellow] {n}")
 
 
 # ─── inspect ────────────────────────────────────────────────────────

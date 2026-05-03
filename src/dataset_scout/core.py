@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import date
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -93,6 +93,86 @@ class DecompositionDirection(BaseModel):
     expected_finds: str = ""
 
 
+# ─── Candidate metadata envelope ─────────────────────────────────────
+
+
+class ColumnInfo(BaseModel):
+    """Minimal description of a dataset column.
+
+    Populated when the source can provide column info cheaply
+    (HF datasets-server, Kaggle column metadata, etc.). Empty otherwise;
+    sample-driven probes infer this from streamed rows.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    dtype: str | None = None  # source-native type string; intentionally untyped
+
+
+class CandidateMetadata(BaseModel):
+    """Source-agnostic metadata envelope consumed by probes.
+
+    The contract that decouples probes from any specific source. HF / Kaggle /
+    PWC plugins all populate this same shape. Probes never read source-specific
+    keys directly — anything that doesn't fit goes into `extras`.
+
+    Fields are deliberately `None`-able rather than carrying sentinel defaults:
+    probes treat `None` as "signal absent" and report `not_applicable`.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    description: str | None = None
+    card_url: str | None = None
+    homepage_url: str | None = None
+
+    # Licensing.
+    license_raw: str | None = None
+    license_spdx: str | None = None
+
+    # Declared languages (ISO codes from card YAML).
+    languages_declared: list[str] = Field(default_factory=list)
+
+    # Dates. content_date_range is rare but valuable when present.
+    uploaded_at: datetime | None = None
+    last_modified: datetime | None = None
+    content_date_range: tuple[date, date] | None = None
+
+    # Size / popularity.
+    rows: int | None = None
+    bytes: int | None = None
+    downloads: int | None = None
+    likes: int | None = None
+
+    # Structure (filled by source when cheap; sample-driven probes fill later).
+    columns: list[ColumnInfo] = Field(default_factory=list)
+    label_column_guess: str | None = None
+    text_column_guess: str | None = None
+
+    # Set of dataset-card YAML keys that were declared on the upstream card.
+    # Used by the card_completeness probe.
+    card_fields_present: frozenset[str] = Field(default_factory=frozenset)
+
+    # Access posture.
+    requires_auth: bool = False
+    gated: bool = False
+
+    # Tags / categories surfaced by the registry.
+    tags: list[str] = Field(default_factory=list)
+    task_categories: list[str] = Field(default_factory=list)
+
+    # Source-specific data probes shouldn't consume directly.
+    extras: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("card_fields_present", mode="before")
+    @classmethod
+    def _coerce_card_fields(cls, v: Any) -> Any:
+        if isinstance(v, (list, tuple, set)):
+            return frozenset(v)
+        return v
+
+
 # ─── Candidate ───────────────────────────────────────────────────────
 
 
@@ -104,11 +184,14 @@ class Candidate(BaseModel):
     source: str
     id: str
     revision: str | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: CandidateMetadata = Field(default_factory=CandidateMetadata)
     streamable: bool = True
-    requires_auth: bool = False
-    content_date_range: tuple[date, date] | None = None
     direction: str | None = None
+
+    @property
+    def requires_auth(self) -> bool:
+        """Convenience pass-through (gated counts as requires_auth)."""
+        return self.metadata.requires_auth or self.metadata.gated
 
 
 # ─── Probes / SubScores ──────────────────────────────────────────────
@@ -234,3 +317,27 @@ class CoverageReport(BaseModel):
     @property
     def notable(self) -> bool:
         return len(self.semantic_gaps) >= 2
+
+
+# ─── Recon result ────────────────────────────────────────────────────
+
+
+class ReconResult(BaseModel):
+    """Top-level result of a `recon` run.
+
+    M1a (discovery slice) framing: candidates are returned in source/search
+    relevance order. Probe outputs are annotations, not a ranking signal.
+    Embedding label-intent fit and the LLM strategy assessor land in later
+    milestones; until they do, `coverage` is None and strategies on each
+    Scorecard are empty.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    intent: Intent
+    candidates: list[Scorecard] = Field(default_factory=list)
+    sources_searched: list[str] = Field(default_factory=list)
+    coverage: CoverageReport | None = None
+    elapsed_seconds: float = 0.0
+    notices: list[str] = Field(default_factory=list)
+    scout_version: str = "0.0.1"

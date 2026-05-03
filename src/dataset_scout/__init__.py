@@ -16,6 +16,8 @@ from importlib import metadata as _metadata
 from dataset_scout.context import ScoutContext
 from dataset_scout.core import (
     Candidate,
+    CandidateMetadata,
+    ColumnInfo,
     CoverageGap,
     CoverageReport,
     DecompositionDirection,
@@ -24,6 +26,7 @@ from dataset_scout.core import (
     LabelKind,
     LicensePolicy,
     LicenseSummary,
+    ReconResult,
     Scorecard,
     SensitiveDomain,
     Strategy,
@@ -44,9 +47,21 @@ except _metadata.PackageNotFoundError:  # editable install before metadata exist
     __version__ = "0.0.0+local"
 
 
-def recon(*args: object, **kwargs: object) -> object:
-    """Run the recon pipeline. Stub until M1."""
-    raise NotImplementedError("recon lands in M1")
+def recon(
+    brief: str,
+    *,
+    ctx: ScoutContext | None = None,
+    parser_overrides: dict[str, object] | None = None,
+) -> ReconResult:
+    """Run the discovery pipeline. M1a slice: HF only, metadata-driven."""
+    from dataset_scout.context import ScoutContext as _Ctx
+    from dataset_scout.pipeline import run_recon
+
+    return run_recon(
+        brief=brief,
+        ctx=ctx if ctx is not None else _Ctx.from_env(),
+        parser_overrides=parser_overrides or {},
+    )
 
 
 def inspect(*args: object, **kwargs: object) -> object:
@@ -61,6 +76,8 @@ def curate(*args: object, **kwargs: object) -> object:
 
 __all__ = [
     "Candidate",
+    "CandidateMetadata",
+    "ColumnInfo",
     "CompositionPairError",
     "CoverageGap",
     "CoverageReport",
@@ -73,6 +90,7 @@ __all__ = [
     "LicenseSummary",
     "ProgressEvent",
     "ProgressEventKind",
+    "ReconResult",
     "Scorecard",
     "ScoutContext",
     "SensitiveDomain",
