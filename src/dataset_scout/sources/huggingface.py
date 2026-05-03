@@ -173,6 +173,18 @@ def _build_search_query(intent: Intent) -> str:
     return intent.raw_brief.strip()
 
 
+def _direction_query(direction: DecompositionDirection) -> str:
+    """Build the HF lexical query for a decomposition direction.
+
+    Prefer the LLM-supplied keywords (the prompt instructs the model to
+    return short lexical terms). Fall back to the direction name with
+    underscores stripped.
+    """
+    if direction.keywords:
+        return " ".join(direction.keywords)
+    return direction.name.replace("_", " ")
+
+
 class HuggingFaceSource:
     """Concrete `Source` plugin for the HuggingFace Hub.
 
@@ -197,13 +209,26 @@ class HuggingFaceSource:
         *,
         budget: Budget,
     ) -> Iterator[Candidate]:
-        """Yield candidates in HF's relevance order.
+        """Yield candidates from the original Intent plus each decomposition direction.
 
-        M1a only searches the original Intent. Decomposition directions
-        are accepted in the signature for forward compatibility but
-        ignored until M2.
+        Each candidate's `surfaced_by` is set to `[direction.name]` for
+        direction-derived hits and `[]` for hits from the original Intent.
+        Candidates may appear in multiple direction queries; the pipeline
+        is responsible for deduping and merging surfaced_by lists.
         """
-        query = _build_search_query(intent)
+        # Always search the original Intent first (surfaced_by=[]).
+        original_query = _build_search_query(intent)
+        if original_query:
+            yield from self._search_one(original_query, surfaced_by=[])
+
+        # Then each decomposition direction.
+        for direction in directions:
+            query = _direction_query(direction)
+            if not query:
+                continue
+            yield from self._search_one(query, surfaced_by=[direction.name])
+
+    def _search_one(self, query: str, *, surfaced_by: list[str]) -> Iterator[Candidate]:
         infos = self._api.list_datasets(search=query, limit=self._limit, full=True)
         for info in infos:
             yield Candidate(
@@ -212,7 +237,7 @@ class HuggingFaceSource:
                 revision=getattr(info, "sha", None),
                 metadata=_build_metadata(info),
                 streamable=True,
-                direction=None,
+                surfaced_by=list(surfaced_by),
             )
 
     def fetch_metadata(self, candidate: Candidate) -> dict[str, Any]:

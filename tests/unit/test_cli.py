@@ -42,12 +42,12 @@ def test_version(runner: CliRunner):
 def test_verbs_exit_with_not_implemented_notice(runner: CliRunner, argv: list[str]):
     result = runner.invoke(app, argv)
     assert result.exit_code == 2
-    assert "not implemented yet" in result.stderr
+    assert "not implemented yet" in result.output
 
 
 def test_sources_list_runs(runner: CliRunner):
     result = runner.invoke(app, ["sources", "list"])
     assert result.exit_code == 0
-    assert "huggingface" in result.stderr
-    assert "kaggle" in result.stderr
-    assert "pwc" in result.stderr
+    assert "huggingface" in result.output
+    assert "kaggle" in result.output
+    assert "pwc" in result.output

@@ -49,6 +49,4 @@ def test_no_dotenv_is_a_silent_noop(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     runner = CliRunner()
     result = runner.invoke(app, ["sources", "list"])
     assert result.exit_code == 0
-    # No mention of dotenv in either stream.
-    assert "dotenv" not in result.stdout.lower()
-    assert "dotenv" not in result.stderr.lower()
+    assert "dotenv" not in result.output.lower()

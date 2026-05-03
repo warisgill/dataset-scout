@@ -186,7 +186,10 @@ class Candidate(BaseModel):
     revision: str | None = None
     metadata: CandidateMetadata = Field(default_factory=CandidateMetadata)
     streamable: bool = True
-    direction: str | None = None
+    # Names of decomposition directions that surfaced this candidate.
+    # Empty = surfaced from the original Intent only. Populated as the
+    # multi-direction search merges hits across queries.
+    surfaced_by: list[str] = Field(default_factory=list)
 
     @property
     def requires_auth(self) -> bool:

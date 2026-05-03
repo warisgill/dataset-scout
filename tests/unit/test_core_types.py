@@ -100,17 +100,17 @@ def test_candidate_minimal():
     c = Candidate(source="huggingface", id="deepset/prompt-injections", revision="abc123")
     assert c.streamable is True
     assert c.requires_auth is False
-    assert c.direction is None
+    assert c.surfaced_by == []
 
 
-def test_candidate_with_direction():
+def test_candidate_with_surfaced_by():
     c = Candidate(
         source="huggingface",
         id="walledai/AdvBench",
         revision=None,
-        direction="hard_negatives_from_jailbreaks",
+        surfaced_by=["hard_negatives_from_jailbreaks", "indirect_injection"],
     )
-    assert c.direction == "hard_negatives_from_jailbreaks"
+    assert c.surfaced_by == ["hard_negatives_from_jailbreaks", "indirect_injection"]
 
 
 # ─── Strategy / Scorecard ───────────────────────────────────────────

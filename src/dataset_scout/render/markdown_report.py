@@ -30,16 +30,31 @@ def render_recon_report(result: ReconResult) -> str:
     """Render a ReconResult to a Markdown string."""
     buf = StringIO()
     intent = result.intent
-    buf.write("# dataset-scout recon report\n\n")
-    buf.write(
-        "> **This is a discovery report — pre-fit metadata screening.**  \n"
-        "> Candidates are returned in source/search relevance order.  \n"
-        "> Probe outputs are annotations, not a ranking score. Semantic\n"
-        "> fit (embedding + LLM strategy assessor) lands in a later\n"
-        "> milestone.\n\n"
-    )
+    metadata_only = any("metadata-only mode" in n for n in result.notices)
 
-    # ─── Brief ──────────────────────────────────────────────────
+    buf.write("# dataset-scout recon report\n\n")
+    if metadata_only:
+        buf.write(
+            "> ⚠️ **Metadata-only mode.**  \n"
+            "> No LLM provider is configured, so decomposition, strategy\n"
+            "> assessment, and coverage gaps were skipped. To enable them,\n"
+            "> copy `.env.example` to `.env` and set an LLM API key.\n\n"
+        )
+    elif result.coverage and result.coverage.decomposition:
+        buf.write(
+            "> **Discovery + decomposition.**  \n"
+            "> Search expanded across the original brief and "
+            f"{len(result.coverage.decomposition)} related direction(s) "
+            "proposed by the LLM. Strategy assessment + coverage gaps land\n"
+            "> in a follow-up milestone.\n\n"
+        )
+    else:
+        buf.write(
+            "> **Pre-fit metadata screening.**  \n"
+            "> Candidates are returned in source/search relevance order.\n"
+            "> Probe outputs are annotations, not a ranking score.\n\n"
+        )
+
     buf.write("## Brief\n\n")
     buf.write(f"**Raw brief:** {intent.raw_brief}\n\n")
     if intent.detection_target:
@@ -47,6 +62,18 @@ def render_recon_report(result: ReconResult) -> str:
     if intent.threat_families:
         buf.write(f"**Threat families:** {', '.join(intent.threat_families)}\n\n")
     buf.write(f"**Languages requested:** {', '.join(intent.languages)}\n\n")
+
+    # ─── Decomposition audit ────────────────────────────────────
+    if result.coverage and result.coverage.decomposition:
+        buf.write("## Decomposition\n\n")
+        buf.write("The LLM proposed these search directions in addition to the original brief:\n\n")
+        for d in result.coverage.decomposition:
+            buf.write(f"- **{d.name}** — {d.rationale}\n")
+            if d.keywords:
+                buf.write(f"  - keywords: `{', '.join(d.keywords)}`\n")
+            if d.expected_finds:
+                buf.write(f"  - expected: {d.expected_finds}\n")
+        buf.write("\n")
 
     # ─── Run summary ────────────────────────────────────────────
     buf.write("## Run summary\n\n")
@@ -64,14 +91,22 @@ def render_recon_report(result: ReconResult) -> str:
         buf.write("No candidates were returned. Try broadening the brief.\n")
         return buf.getvalue()
 
-    # ─── Candidates ─────────────────────────────────────────────
     buf.write("## Candidates\n\n")
-    buf.write("Listed in **search-relevance order from the source.** ")
-    buf.write("This is *not* a fitness ranking.\n\n")
+    if result.coverage and result.coverage.decomposition:
+        buf.write(
+            "Listed in search-relevance order, deduped across the original "
+            "brief and decomposition directions. The `surfaced by` annotation\n"
+            "on each candidate shows which direction(s) found it.\n\n"
+        )
+    else:
+        buf.write(
+            "Listed in **search-relevance order from the source.** "
+            "This is not a fitness ranking — embedding fit and the "
+            "strategy assessor land in a follow-up milestone.\n\n"
+        )
     for i, sc in enumerate(result.candidates, start=1):
         _render_candidate(buf, i, sc)
 
-    # ─── Footer ─────────────────────────────────────────────────
     buf.write("\n---\n\n")
     buf.write(
         "_License signals are an SPDX-best-effort guess. Always read the "
@@ -93,6 +128,9 @@ def _render_candidate(buf: StringIO, index: int, sc: Scorecard) -> None:
     if meta.description:
         desc = meta.description.strip().splitlines()[0][:180]
         buf.write(f"- 📝 **Description:** {desc}\n")
+
+    if cand.surfaced_by:
+        buf.write(f"- 🧭 **Surfaced by:** {', '.join(cand.surfaced_by)}\n")
 
     badges = list(_render_badges(sc))
     if badges:

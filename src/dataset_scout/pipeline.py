@@ -1,22 +1,32 @@
-"""The recon pipeline (M1a discovery slice).
+"""The recon pipeline.
 
-parse → search (HF only) → cheap probes → ReconResult.
+M2a: parse → (decompose if LLM available) → multi-direction search →
+cheap probes → ReconResult.
 
-No decomposition, no embedding fit, no LLM strategy assessor in this
-slice — those land in M2. Candidates are returned in source/search
-relevance order; probe outputs are annotations, never folded into a
-single ranking score.
+Mode is decided once at the top by `decompose.llm_available(ctx)` and
+the `explore` flag. When the LLM is available and `explore=True`, the
+pipeline runs the full decomposition + multi-direction search. When
+not, it runs in metadata-only mode and emits an explicit notice in the
+result so the report is honest about the difference.
+
+Strategy assessor + coverage report land in M2b.
 """
 
 from __future__ import annotations
 
 import time
-from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 from dataset_scout.context import ScoutContext
-from dataset_scout.core import Candidate, ReconResult, Scorecard, SubScore
-from dataset_scout.errors import SourceUnavailableError
+from dataset_scout.core import (
+    Candidate,
+    CoverageReport,
+    DecompositionDirection,
+    ReconResult,
+    Scorecard,
+    SubScore,
+)
+from dataset_scout.errors import LLMError, SourceUnavailableError
 from dataset_scout.events import ProgressEvent, ProgressEventKind
 from dataset_scout.intent import HeuristicIntentParser
 from dataset_scout.probes import cheap_probes
@@ -28,16 +38,24 @@ if TYPE_CHECKING:
     from dataset_scout.sources.base import Source
 
 
-# Default upper bound on candidates we'll surface in the report. The
-# discovery slice keeps this modest; M1b can grow it.
 _DEFAULT_MAX_CANDIDATES = 50
+
+
+# Single source of truth for the metadata-only-mode notice. Used by both
+# the stderr emitter and the report header so wording stays in sync.
+METADATA_ONLY_NOTICE = (
+    "Running in metadata-only mode: no LLM provider is configured, so "
+    "decomposition, strategy assessment, and coverage gaps were skipped. "
+    "To enable them, copy .env.example to .env and set an LLM API key."
+)
 
 
 def _build_sources(ctx: ScoutContext) -> list[Source]:
     """Instantiate concrete sources from the context.
 
-    Hardcoded dispatch in M1a — only HuggingFace is wired. When Kaggle
-    and PWC land we'll switch to importlib.metadata.entry_points.
+    Hardcoded dispatch — only HuggingFace is wired today. Kaggle and
+    PWC are deferred; when they land we'll switch to
+    importlib.metadata.entry_points.
     """
     sources: list[Source] = []
     enabled = set(ctx.enabled_sources())
@@ -49,7 +67,7 @@ def _build_sources(ctx: ScoutContext) -> list[Source]:
     if not sources:
         raise SourceUnavailableError(
             "No sources are enabled. Configure at least one in your "
-            "ScoutContext (huggingface is the only one wired in M1a)."
+            "ScoutContext (huggingface is the only one wired today)."
         )
     return sources
 
@@ -68,6 +86,29 @@ def _score_candidate(
     return Scorecard(candidate=candidate, cheap_probes=cheap)
 
 
+def _merge_or_register(
+    pool: dict[tuple[str, str], Candidate],
+    cand: Candidate,
+) -> bool:
+    """Insert `cand` into `pool` keyed by (source, id), or merge surfaced_by.
+
+    Returns True if this is a newly-seen candidate, False if it merged
+    into an existing one.
+    """
+    key = (cand.source, cand.id)
+    existing = pool.get(key)
+    if existing is None:
+        pool[key] = cand
+        return True
+    merged: list[str] = list(existing.surfaced_by)
+    for d in cand.surfaced_by:
+        if d not in merged:
+            merged.append(d)
+    if merged != existing.surfaced_by:
+        pool[key] = existing.model_copy(update={"surfaced_by": merged})
+    return False
+
+
 def run_recon(
     brief: str,
     *,
@@ -77,8 +118,9 @@ def run_recon(
     events: list[ProgressEvent] | None = None,
     probes: ProbeRegistry | None = None,
     sources: list[Source] | None = None,
+    explore: bool = True,
 ) -> ReconResult:
-    """Run the M1a discovery pipeline and return a structured `ReconResult`.
+    """Run the discovery pipeline and return a `ReconResult`.
 
     Parameters
     ----------
@@ -95,6 +137,9 @@ def run_recon(
     probes / sources
         Dependency-injection hooks. Defaults wire the cheap probe set
         and HuggingFaceSource.
+    explore
+        If False, skip decomposition unconditionally (debug). The CLI
+        wires this to a hidden `--no-explore` flag.
     """
     overrides = parser_overrides or {}
     notices: list[str] = []
@@ -105,7 +150,6 @@ def run_recon(
 
     started = time.monotonic()
 
-    # 1. Parse Intent.
     _emit(ProgressEventKind.STAGE_STARTED, stage="parse")
     intent = HeuristicIntentParser().parse(brief, **overrides)
     _emit(
@@ -116,41 +160,71 @@ def run_recon(
         languages=list(intent.languages),
     )
 
-    # 2. Search.
+    directions: list[DecompositionDirection] = []
+    use_llm = explore
+    if use_llm:
+        from dataset_scout.decompose import decompose_intent, llm_available
+
+        if not llm_available(ctx):
+            use_llm = False
+        else:
+            _emit(ProgressEventKind.STAGE_STARTED, stage="decompose")
+            try:
+                directions = decompose_intent(intent, ctx=ctx)
+            except LLMError as exc:
+                notices.append(f"decomposition skipped: {exc}")
+                use_llm = False
+                directions = []
+            else:
+                for d in directions:
+                    _emit(
+                        ProgressEventKind.DIRECTION_PROPOSED,
+                        stage="decompose",
+                        name=d.name,
+                        keywords=list(d.keywords),
+                    )
+            _emit(
+                ProgressEventKind.STAGE_FINISHED,
+                stage="decompose",
+                message=f"proposed {len(directions)} direction(s)",
+            )
+
+    if not use_llm:
+        notices.append(METADATA_ONLY_NOTICE)
+
     if sources is None:
         sources = _build_sources(ctx)
     probes = probes if probes is not None else cheap_probes()
     budget = Budget()
 
     _emit(ProgressEventKind.STAGE_STARTED, stage="search")
-    candidates: list[Candidate] = []
-    seen: set[tuple[str, str]] = set()
+    pool: dict[tuple[str, str], Candidate] = {}
     for source in sources:
         try:
-            stream = source.search(intent, [], budget=budget)
-        except Exception as exc:  # defensive: a misbehaving source must not kill the run
+            stream = source.search(intent, directions, budget=budget)
+        except Exception as exc:  # defensive: misbehaving source must not kill the run
             notices.append(f"source '{source.name}' failed: {exc}")
             continue
-        for cand in _capped(stream, max_candidates - len(candidates)):
-            key = (cand.source, cand.id)
-            if key in seen:
-                continue
-            seen.add(key)
-            candidates.append(cand)
-            _emit(
-                ProgressEventKind.CANDIDATE_FOUND,
-                stage="search",
-                source=cand.source,
-                id=cand.id,
-            )
-            if len(candidates) >= max_candidates:
+        for cand in stream:
+            is_new = _merge_or_register(pool, cand)
+            if is_new:
+                _emit(
+                    ProgressEventKind.CANDIDATE_FOUND,
+                    stage="search",
+                    source=cand.source,
+                    id=cand.id,
+                    surfaced_by=list(cand.surfaced_by),
+                )
+            if len(pool) >= max_candidates:
                 break
-        if len(candidates) >= max_candidates:
+        if len(pool) >= max_candidates:
             break
+
+    candidates = list(pool.values())[:max_candidates]
     _emit(
         ProgressEventKind.STAGE_FINISHED,
         stage="search",
-        message=f"found {len(candidates)} candidate(s)",
+        message=f"found {len(candidates)} unique candidate(s)",
     )
 
     if not candidates:
@@ -158,7 +232,6 @@ def run_recon(
             "No candidates returned. Try broadening the brief or check source connectivity."
         )
 
-    # 3. Cheap probes.
     _emit(ProgressEventKind.STAGE_STARTED, stage="probe")
     scorecards: list[Scorecard] = []
     for cand in candidates:
@@ -178,23 +251,16 @@ def run_recon(
 
     elapsed = time.monotonic() - started
 
+    coverage = CoverageReport(decomposition=directions) if directions else None
+
     return ReconResult(
         intent=intent,
         candidates=scorecards,
         sources_searched=[s.name for s in sources],
+        coverage=coverage,
         elapsed_seconds=round(elapsed, 3),
         notices=notices,
     )
 
 
-def _capped(stream: Iterator[Candidate], remaining: int) -> Iterator[Candidate]:
-    if remaining <= 0:
-        return
-    for i, cand in enumerate(stream):
-        if i >= remaining:
-            return
-        yield cand
-
-
-# Re-exported for type checkers that want to subclass / mock.
-__all__ = ["Probe", "run_recon"]
+__all__ = ["METADATA_ONLY_NOTICE", "Probe", "run_recon"]

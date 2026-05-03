@@ -37,6 +37,7 @@ from dataset_scout.core import (
 from dataset_scout.errors import (
     CompositionPairError,
     DatasetScoutError,
+    LLMError,
     SourceUnavailableError,
 )
 from dataset_scout.events import ProgressEvent, ProgressEventKind
@@ -85,6 +86,7 @@ __all__ = [
     "DecompositionDirection",
     "Evidence",
     "Intent",
+    "LLMError",
     "LabelKind",
     "LicensePolicy",
     "LicenseSummary",

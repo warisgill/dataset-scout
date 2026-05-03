@@ -20,3 +20,10 @@ class CompositionPairError(DatasetScoutError):
     See `TECH_DESIGN.md` §13.4. Curate must include both halves of a
     `composes_with` pair, or drop both.
     """
+
+
+class LLMError(DatasetScoutError):
+    """Raised when an LLM call fails (no provider, validation, timeout, etc.).
+
+    The pipeline catches this and falls back to metadata-only mode.
+    """

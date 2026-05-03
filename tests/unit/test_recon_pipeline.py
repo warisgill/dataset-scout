@@ -128,9 +128,9 @@ def test_run_recon_end_to_end(tmp_path: Path) -> None:
     assert len(parsed["candidates"]) == 3
 
     md = md_path.read_text(encoding="utf-8")
-    assert "discovery report" in md.lower()
-    assert "pre-fit metadata screening" in md.lower()
-    # Discovery framing must be explicit anywhere ranking is mentioned.
+    # Test runs without LLM keys -> metadata-only mode header.
+    assert "metadata-only mode" in md.lower()
+    # Discovery framing must be explicit.
     assert "not a ranking" in md.lower() or "not a fitness ranking" in md.lower()
     for cand_id in ids:
         assert cand_id in md

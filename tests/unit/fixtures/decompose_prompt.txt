@@ -1,0 +1,35 @@
+You are helping an AI security engineer find public datasets that are
+related to their detection target. Their stated brief and target are
+narrow; we want to expand the search net to find candidates that
+could contribute via reframing — proxy positives, hard negatives,
+benign baselines, subset extractions, or label remappings.
+
+Brief: find prompt injection corpora for our RAG service
+Detection target: prompt injection
+Threat families: prompt_injection, indirect_injection
+Deployment context: rag_pipeline
+
+Propose 3-7 RELATED SEARCH DIRECTIONS adjacent to this target.
+Each direction should be a distinct angle the search should explore
+beyond the original brief, NOT a paraphrase of the brief itself.
+
+Each direction's `keywords` should be SHORT, LEXICAL search terms a
+keyword search engine would match (e.g., "prompt injection",
+"jailbreak prompts", "indirect injection"). Avoid full sentences.
+
+Return JSON matching this schema:
+{
+  "directions": [
+    {
+      "name": "snake_case_short_name",
+      "rationale": "1-2 sentences on why this is relevant",
+      "keywords": ["term", "term", "term"],
+      "threat_families": ["family", ...],
+      "expected_finds": "1 sentence on what useful data we'd hope to find"
+    },
+    ...
+  ]
+}
+
+Be conservative-but-creative. Do NOT include directions you cannot
+defend. Aim for 3-5 strong directions; up to 7 if genuinely warranted.

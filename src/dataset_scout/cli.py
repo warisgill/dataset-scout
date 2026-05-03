@@ -85,29 +85,26 @@ def recon(
         list[str] | None,
         typer.Option("--license", help="License allowlist (repeatable)."),
     ] = None,
-    threat_families: Annotated[list[str] | None, typer.Option("--threat-families")] = None,
     min_strategy_confidence: Annotated[
         float, typer.Option("--min-strategy-confidence", min=0.0, max=1.0)
     ] = 0.5,
-    review_intent: Annotated[bool, typer.Option("--review-intent")] = False,
-    review_decomposition: Annotated[bool, typer.Option("--review-decomposition")] = False,
-    no_explore: Annotated[bool, typer.Option("--no-explore")] = False,
-    use_llm_parser: Annotated[bool, typer.Option("--use-llm-parser")] = False,
     out: Annotated[Path, typer.Option("--out", help="Output directory.")] = Path("dscout-out"),
+    # Hidden expert escape hatches — not in --help. Useful for debugging
+    # and forward compatibility; production users should let the brief +
+    # decomposer carry the signal.
+    threat_families: Annotated[
+        list[str] | None,
+        typer.Option("--threat-families", hidden=True),
+    ] = None,
+    no_explore: Annotated[
+        bool,
+        typer.Option("--no-explore", hidden=True, help="Skip LLM decomposition (debug)."),
+    ] = False,
 ) -> None:
     from dataset_scout.context import ScoutContext
     from dataset_scout.errors import DatasetScoutError
     from dataset_scout.pipeline import run_recon
     from dataset_scout.render import write_recon_report, write_results_json
-
-    if review_intent or review_decomposition or use_llm_parser:
-        err.print(
-            "[dim]note: --review-intent / --review-decomposition / "
-            "--use-llm-parser are accepted but no-op in this milestone "
-            "(decomposition + LLM parser land in M2).[/dim]"
-        )
-    # `--no-explore` is the M1a default; the flag is silently absorbed.
-    _ = no_explore
 
     overrides: dict[str, object] = {"min_strategy_confidence": min_strategy_confidence}
     if detection_target:
@@ -124,7 +121,12 @@ def recon(
     ctx = ScoutContext.from_env(is_tty=sys.stderr.isatty())
 
     try:
-        result = run_recon(brief, ctx=ctx, parser_overrides=overrides)
+        result = run_recon(
+            brief,
+            ctx=ctx,
+            parser_overrides=overrides,
+            explore=not no_explore,
+        )
     except DatasetScoutError as e:
         err.print(f"[red]error:[/red] {e}")
         raise typer.Exit(code=1) from e

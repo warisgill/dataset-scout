@@ -35,6 +35,7 @@ dependencies = [
   "huggingface-hub>=1.13.0",
   "httpx>=0.28.1",
   "python-dotenv>=1.2.2",
+  "litellm>=1.83.14",
 ]
 
 [project.optional-dependencies]
