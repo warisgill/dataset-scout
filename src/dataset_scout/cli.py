@@ -33,6 +33,21 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
+def _load_dotenv() -> Path | None:
+    """Load `.env` from the CWD if present. Returns the path loaded, or None.
+
+    Uses `override=False` so explicitly-set environment variables always
+    win over `.env` — explicit shell config trumps dotfiles.
+    """
+    from dotenv import load_dotenv
+
+    candidate = Path.cwd() / ".env"
+    if candidate.is_file():
+        load_dotenv(candidate, override=False)
+        return candidate
+    return None
+
+
 @app.callback()
 def _root(
     version: Annotated[
@@ -46,6 +61,7 @@ def _root(
     ] = None,
 ) -> None:
     """dataset-scout — find and curate public datasets for detection work."""
+    _load_dotenv()
 
 
 # ─── recon ──────────────────────────────────────────────────────────

@@ -24,6 +24,8 @@ uv.lock.tmp
 dscout-out/
 mycorpus/
 *.local.*
+.env
+.env.local
 
 # OS / IDE
 .DS_Store

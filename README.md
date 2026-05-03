@@ -17,6 +17,13 @@ Alias: `dscout`.
 
 Early development. Not yet released.
 
+## Configure
+
+Copy `.env.example` to `.env` and fill in any keys you need. The CLI
+auto-loads `.env` from the current working directory at startup. A HF
+token isn't strictly required for public datasets, but it raises rate
+limits and is the friendlier default.
+
 ## Install (development)
 
 ```bash
