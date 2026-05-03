@@ -1,0 +1,184 @@
+# Concepts
+
+The mental model behind `dataset-scout`. Read this once and the CLI
+output and library types should feel obvious.
+
+---
+
+## 1. Discovery, not ranking
+
+`datascout recon` is **discovery tooling**, not a ranked-quality
+scoreboard. Candidates come back in the source's own search-relevance
+order; probe outputs are **annotations** beside each candidate, never
+folded into a single "quality" number.
+
+The reason is honesty. License + freshness + card-completeness say a
+lot about a dataset's polish but very little about whether it actually
+fits your detection task. Without a semantic-fit signal (embedding fit
++ LLM strategy assessment, both later milestones), aggregating those
+into a fitness score would imply confidence we don't have.
+
+When the LLM strategy assessor lands (M2b) the framing changes:
+candidates carry per-strategy confidence and the report leads with the
+strongest defensible reframings. Until then: discovery, with receipts.
+
+---
+
+## 2. Modes: full vs metadata-only
+
+The pipeline picks one of two modes at start-up.
+
+| Mode | Trigger | What runs |
+|---|---|---|
+| **Full** | Azure OpenAI configured (`AZURE_OPENAI_ENDPOINT` + `_DEPLOYMENT`) | Brief parsing → LLM decomposition → multi-direction HF search → cheap probes → *(M2b: strategy assessor + coverage)* |
+| **Metadata-only** | AOAI not configured | Brief parsing → single-query HF search → cheap probes |
+
+The fallback is **explicit and noisy** — you'll see a notice on stderr
+and a prominent header in `report.md` telling you what to set. No
+silent weakening.
+
+See [`configuration.md`](configuration.md) for the env-var setup.
+
+---
+
+## 3. Sources, candidates, and metadata
+
+A `Source` plugin (HuggingFace today; Kaggle and Papers-With-Code in
+M1b) yields `Candidate` objects in response to an `Intent` plus a list
+of `DecompositionDirection`s. Each candidate carries:
+
+- **Identity** — `source`, `id`, `revision`.
+- **`metadata`** — a typed `CandidateMetadata` envelope: license raw +
+  SPDX guess, dates, declared languages, size signals, columns
+  (when cheap), card-fields-present set, gating posture, tags.
+- **`surfaced_by: list[str]`** — the names of every decomposition
+  direction that found this candidate. A candidate hit from the
+  original brief carries an empty list. Multi-direction hits keep
+  all their provenance, which lets future ranking weight them
+  appropriately.
+
+The metadata envelope is **source-agnostic** — Kaggle and PWC plugins
+will populate the same shape, so probes never read source-specific keys.
+
+---
+
+## 4. Probes
+
+Each probe is a small object emitting a typed `SubScore` per candidate:
+
+```python
+class Probe(Protocol):
+    name: str
+    version: str
+    def applies(self, candidate, intent) -> bool: ...
+    def run(self, candidate, intent) -> SubScore: ...
+```
+
+Six metadata-driven probes ship today:
+
+| Probe | What it tells you |
+|---|---|
+| `license` | SPDX best-effort guess and how it sits relative to your `LicensePolicy` (allow / warn / outside policy / unknown). |
+| `size` | Row count / byte count / downloads / likes when declared. No 0–1 score; size doesn't map cleanly. |
+| `recency` | Days since upload and last-modified. Raw evidence only. |
+| `freshness` | Bucketed signal: fresh `<6mo` / current `6–18mo` / aging `>18mo`. |
+| `languages` | Overlap fraction between declared languages and your intent's language list. |
+| `card_completeness` | Fraction of expected YAML fields actually declared. Documentation-hygiene only — never used as a major rank component. |
+
+**Sample-driven probes** — `label_structure`, `schema_fingerprint`,
+plus the **embedding label-intent fit** — land in M1b once `Source`
+plugins implement `stream_sample()`.
+
+Every `SubScore` carries:
+
+- a `value` (when a 0-1 signal makes sense, otherwise `None`),
+- an `n` (rows sampled / count when applicable),
+- a `status` (`ok` / `not_applicable` / `low_confidence` / `skipped`),
+- a list of `Evidence` items — every claim links to specific facts.
+
+The status field is load-bearing: probes that genuinely don't apply to
+a candidate self-report `not_applicable` instead of fabricating a value.
+
+---
+
+## 5. The strategy taxonomy *(M2b — preview)*
+
+Per-candidate, the LLM strategy assessor will return one or more
+`Strategy` objects from this 8-kind taxonomy:
+
+| Kind | Meaning |
+|---|---|
+| `direct_use` | Labels and content map cleanly to your task. |
+| `subset_extraction` | Only some rows are relevant; filter to subset. |
+| `label_remapping` | Same data, different label semantics. |
+| `cross_class_repurposing` | Original positives → hard-negatives, or vice versa. |
+| `signal_proxy` | Adjacent threat used as proxy positive during cold start. |
+| `benign_baseline` | No relevant positives, but useful as benign distribution. |
+| `composition_only` | Useful only when paired with another corpus *(reserved; portfolio-level pass)*. |
+| `not_useful` | The honest answer when nothing fits. |
+
+Each strategy carries a `confidence ∈ [0, 1]`, a written rationale,
+caveats, and a concrete `transform` spec (column maps, label
+value-maps, filters). The assessor is **conservative-but-creative**:
+stretches get low confidence, and `--min-strategy-confidence` filters
+aggressive reframings.
+
+---
+
+## 6. `label_kind` — proxies are honest by default
+
+The output JSONL (M4) marks every row with one of:
+
+| `label_kind` | When to train | When to eval |
+|---|---|---|
+| `ground_truth` | ✅ | ✅ |
+| `subset_extracted` | ✅ | ✅ (within the documented subset) |
+| `remapped` | ✅ | ✅ *if you accept the remapped definition* |
+| `proxy` | ✅ (often weighted) | ❌ — exclude proxies from eval |
+
+This is the load-bearing field for downstream training. Downstream
+tools should filter to `label_kind != "proxy"` for evaluation.
+
+---
+
+## 7. Recipes and lockfiles *(M4 — preview)*
+
+The output of `recon` includes a `recipe.draft.yaml`. Hand-edit it
+(adjust strategies, drop candidates, add explicit components), then
+hand it to `datascout curate --from recipe.yaml`.
+
+`curate` materialises the recipe into:
+
+```
+mycorpus/
+├── train.jsonl / val.jsonl / test.jsonl   leakage-aware splits
+├── recipe.yaml                             input, copied verbatim (audit trail)
+├── recipe.lock.yaml                        pinned revisions + realized counts + hashes
+├── manifest.json                           machine-readable lock equivalent
+├── report.md                               5-second scorecard + provenance
+├── fingerprint.txt                         one-line content hash for commits
+└── usage.md                                3-line snippets for HF datasets / pandas
+```
+
+`recipe.lock.yaml` is **the defensible record** — the single file a
+reviewer can ask about: which corpus did this detector train on, and
+how did proxies factor in?
+
+---
+
+## 8. Voice
+
+The audience is detection engineers under audit pressure. Output is
+designed accordingly:
+
+- **No aggregate "quality" or "risk" headline.** Per-signal evidence,
+  per-candidate strategy assessment, written rationale.
+- **Receipts everywhere.** Every claim links back to a card URL,
+  sample row, prompt, or response.
+- **`recipe.lock.yaml` is the defensible record.**
+- **Proxies are honest by default.** Output JSONL marks them; eval
+  must exclude them.
+- **"This is not legal advice"** footer on any report touching
+  licensing.
+
+See [`architecture.md`](architecture.md) for the pipeline detail.

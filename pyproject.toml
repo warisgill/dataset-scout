@@ -55,6 +55,7 @@ dev = [
 
 [project.scripts]
 dataset-scout = "dataset_scout.cli:app"
+datascout = "dataset_scout.cli:app"
 dscout = "dataset_scout.cli:app"
 
 # Source plugins are registered via this entry-point group (M1+ will populate).
