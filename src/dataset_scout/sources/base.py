@@ -59,6 +59,24 @@ class Source(Protocol):
         seed: int,
     ) -> Iterator[dict[str, Any]]: ...
 
+    def stream_rows(
+        self,
+        candidate: Candidate,
+        *,
+        config: str | None = None,
+        split: str = "train",
+        take: int | None = None,
+        seed: int = 42,
+    ) -> Iterator[dict[str, Any]]:
+        """Stream rows for full materialisation (curate).
+
+        Differs from `stream_sample` in intent: sample is for cheap
+        statistics on a small N, `stream_rows` is for materialising
+        every (or many) rows of a specific config/split. `take=None`
+        means "all rows".
+        """
+        ...
+
     def card_url(self, candidate: Candidate) -> str: ...
 
     def terms_check(self, intent: Intent) -> list[Obligation]: ...

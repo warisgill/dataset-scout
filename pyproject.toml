@@ -37,6 +37,7 @@ dependencies = [
   "python-dotenv>=1.2.2",
   "litellm>=1.83.14",
   "azure-identity>=1.25.3",
+  "datasets>=4.8.5",
 ]
 
 [project.optional-dependencies]

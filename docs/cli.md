@@ -98,9 +98,9 @@ datascout inspect huggingface:deepset/prompt-injections@4f61ecb038e9
 
 ---
 
-## `curate` *(M4 — not yet implemented)*
+## `curate`
 
-Build a schema-normalized, leakage-aware corpus from a recipe.
+Build a schema-normalized corpus from a recipe.
 
 ```bash
 datascout curate --from recipe.yaml --out ./mycorpus
@@ -110,10 +110,28 @@ datascout curate --from recipe.yaml --out ./mycorpus
 |---|---|---|
 | `--from PATH` | required | Path to `recipe.yaml`. |
 | `--out PATH` | `mycorpus/` | Output directory. |
-| `--min-strategy-confidence FLOAT` | recipe-defined | Override the recipe's confidence threshold. |
+| `--min-strategy-confidence FLOAT` | recipe-defined | Override the recipe's threshold. Recorded as an override in `recipe.lock.yaml`. |
+| `--seed INT` | recipe-defined | Override the recipe's split seed. Recorded as an override. |
+
+### Status (M4a — preview)
+
+The current slice ships a working pipeline but isn't yet audit-ready:
+
+- ✅ Recipe loader, materialisation from HuggingFace, normalized
+  JSONL output, lockfile, manifest, report, fingerprint, usage.
+- ✅ Multimodal-safe `extras` (bytes/arrays coerced to strings with a
+  flag).
+- ✅ Hard-fail on any non-null `transform.filter` (silent no-op would
+  break the audit trail).
+- ⏳ M4b: MinHash dedup, leakage-aware splitter, minimal filter DSL.
+
+Output `report.md` carries an explicit "preview build, not
+audit-ready" banner. `recipe.lock.yaml` records
+`audit_readiness: preview` with a note about deferred features. M4b
+flips both to audit-ready without changing the recipe shape.
 
 Output layout described in
-[concepts.md](concepts.md#7-recipes-and-lockfiles-m4--preview).
+[concepts.md](concepts.md#7-recipes-and-lockfiles).
 
 ---
 

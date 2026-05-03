@@ -39,6 +39,7 @@ class FakeSource:
         self.search_calls: int = 0
         self.metadata_calls: int = 0
         self.sample_calls: int = 0
+        self.stream_rows_calls: int = 0
         self.card_url_calls: int = 0
         self.terms_check_calls: int = 0
 
@@ -65,6 +66,22 @@ class FakeSource:
         self.sample_calls += 1
         rows = self._samples.get(candidate.id, [])
         for row in rows[:n]:
+            yield dict(row)
+
+    def stream_rows(
+        self,
+        candidate: Candidate,
+        *,
+        config: str | None = None,
+        split: str = "train",
+        take: int | None = None,
+        seed: int = 42,
+    ) -> Iterator[dict[str, Any]]:
+        self.stream_rows_calls += 1
+        rows = self._samples.get(candidate.id, [])
+        if take is not None:
+            rows = rows[:take]
+        for row in rows:
             yield dict(row)
 
     def card_url(self, candidate: Candidate) -> str:

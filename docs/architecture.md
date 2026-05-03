@@ -257,8 +257,9 @@ prompts are **snapshot-tested** — drift surfaces as a PR diff.
 | M1b | ⏳ deferred | sample-driven probes, embedding fit, Kaggle, PWC, cache |
 | M2a | ✅ done | Azure OpenAI Entra, LLM decomposition, multi-direction search, surfaced_by, mode detection |
 | M2b | ✅ done | strategy assessor, coverage report, recipe.draft.yaml, two-stage shortlist, ranked report |
+| M4a | ✅ done | `curate` preview slice — recipe → JSONL + lockfile + manifest + report + fingerprint + usage. Hash-mod split (NOT leakage-aware), filter DSL hard-fails. |
+| M4b | 🔄 next | MinHash dedup + leakage-aware splitter + filter DSL — turns curate output into the audit-grade record. |
 | M3 | ⏳ | `inspect` deep-dive |
-| M4 | 🔄 next | `curate`: normalized JSONL, MinHash dedup, leakage-aware splits, recipe.lock.yaml |
 | M5 | ⏳ | real-brief validation, ship 1.0 |
 
 Detail in [`docs/concepts.md`](concepts.md) and the (archived)

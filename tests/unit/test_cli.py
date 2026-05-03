@@ -34,7 +34,6 @@ def test_version(runner: CliRunner):
     "argv",
     [
         ["inspect", "huggingface:deepset/prompt-injections"],
-        ["curate", "--from", "recipe.yaml"],
         ["cache", "info"],
         ["sources", "enable", "kaggle"],
     ],

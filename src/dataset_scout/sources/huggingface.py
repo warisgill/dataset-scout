@@ -269,6 +269,41 @@ class HuggingFaceSource:
         """Stream a small sample of rows. Implementation lands in M1b."""
         raise NotImplementedError("HuggingFaceSource.stream_sample lands in M1b")
 
+    def stream_rows(
+        self,
+        candidate: Candidate,
+        *,
+        config: str | None = None,
+        split: str = "train",
+        take: int | None = None,
+        seed: int = 42,
+    ) -> Iterator[dict[str, Any]]:
+        """Stream rows from an HF dataset for full materialisation.
+
+        Uses `datasets.load_dataset(streaming=True)` so memory stays
+        flat for arbitrarily large corpora. The `datasets` import is
+        lazy: callers that only need search + cheap probes never pay
+        for it.
+
+        Many HF datasets require an explicit `config` (subset name) or
+        non-default split — both are passed through from the recipe.
+        Errors from `datasets` (gated repo, missing config, etc.) are
+        propagated; the caller decides how to surface them.
+        """
+        from datasets import load_dataset  # type: ignore[import-untyped]
+
+        ds = load_dataset(
+            candidate.id,
+            name=config,
+            split=split,
+            streaming=True,
+            revision=candidate.revision,
+        )
+        for i, row in enumerate(ds):
+            if take is not None and i >= take:
+                break
+            yield dict(row)
+
     def card_url(self, candidate: Candidate) -> str:
         return candidate.metadata.card_url or _HF_DATASET_URL.format(id=candidate.id)
 

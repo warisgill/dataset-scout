@@ -79,9 +79,11 @@ The end-to-end vision (per
 
 - **M3 — `datascout inspect`.** One-candidate deep-dive with full
   strategy assessment.
-- **M4 — `datascout curate`.** Recipe → schema-normalized JSONL +
-  MinHash dedup + leakage-aware splits + `recipe.lock.yaml` audit
-  trail. The defensible artefact reviewers can ask about.
+- **M4b — full audit-grade curate.** The current `curate` is a
+  **preview**: deterministic hash-mod split + multimodal coercion +
+  filter-DSL hard-fail. M4b adds MinHash dedup, leakage-aware
+  splitting, and a minimal filter expression DSL — turning the
+  output into the defensible audit artefact reviewers can ask about.
 - **M1b** (deferred, parallel track): embedding label-intent fit,
   Kaggle and Papers-With-Code sources, sample-driven probes,
   SQLite cache.

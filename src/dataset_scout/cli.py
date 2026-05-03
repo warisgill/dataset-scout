@@ -179,9 +179,44 @@ def curate(
     min_strategy_confidence: Annotated[
         float | None, typer.Option("--min-strategy-confidence", min=0.0, max=1.0)
     ] = None,
+    seed: Annotated[int | None, typer.Option("--seed", help="Override the recipe's seed.")] = None,
 ) -> None:
-    err.print("[yellow]curate is not implemented yet (lands in M4).[/yellow]")
-    raise typer.Exit(code=2)
+    from dataset_scout.context import ScoutContext
+    from dataset_scout.curate import load_recipe, run_curate
+    from dataset_scout.errors import DatasetScoutError
+
+    try:
+        recipe = load_recipe(from_)
+    except Exception as e:
+        err.print(f"[red]error:[/red] failed to load recipe: {e}")
+        raise typer.Exit(code=1) from e
+
+    ctx = ScoutContext.from_env(is_tty=sys.stderr.isatty())
+
+    try:
+        result = run_curate(
+            recipe,
+            out,
+            ctx=ctx,
+            seed_override=seed,
+            min_strategy_confidence_override=min_strategy_confidence,
+        )
+    except DatasetScoutError as e:
+        err.print(f"[red]error:[/red] {e}")
+        raise typer.Exit(code=1) from e
+
+    err.print(
+        f"[green]✔[/green] {result.total_rows} row(s) written to {result.out_dir} "
+        f"({result.components_kept} component(s) kept, "
+        f"{result.components_skipped} skipped) in {result.elapsed_seconds:.2f}s"
+    )
+    splits_str = " · ".join(f"{n}={c}" for n, c in result.rows_per_split.items())
+    err.print(f"  - splits: {splits_str}")
+    err.print(f"  - fingerprint: {result.fingerprint[:16]}...")
+    err.print(
+        "  [yellow]![/yellow] preview build — hash-mod split, no dedup. "
+        "Audit-ready splitting + MinHash land in M4b."
+    )
 
 
 # ─── cache ──────────────────────────────────────────────────────────

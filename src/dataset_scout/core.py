@@ -322,6 +322,47 @@ class CoverageReport(BaseModel):
         return len(self.semantic_gaps) >= 2
 
 
+# ─── Normalized record (curate output schema) ────────────────────────
+
+
+class NormalizedRecord(BaseModel):
+    """One row of the materialised corpus.
+
+    The defensible output shape: every row carries explicit `label_kind`
+    so downstream training can filter proxies out of eval. `extras`
+    holds the original source row verbatim — no information is dropped
+    in normalization. When source values aren't JSON-serializable
+    (images, audio, arrays) the materialiser stringifies them and
+    flags the coercion in `extras_coercion: True`.
+
+    Reference: `docs/concepts.md` §6 (label_kind) and §7 (recipes).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+    label: Literal["positive", "benign", "hard_negative"]
+    label_kind: LabelKind
+
+    # Recon-side provenance.
+    strategy: StrategyKind
+    strategy_confidence: float = Field(ge=0.0, le=1.0)
+
+    # Source provenance.
+    source: str  # "<source>:<id>"
+    source_row_id: str
+    source_revision: str | None = None
+    source_config: str | None = None
+    source_split: str | None = None
+
+    # Optional flavour from recipe intent (first threat family wins).
+    threat_family: str | None = None
+
+    # Original row, JSON-coerced if necessary.
+    extras: dict[str, Any] = Field(default_factory=dict)
+    extras_coercion: bool = False
+
+
 # ─── Recon result ────────────────────────────────────────────────────
 
 
