@@ -171,9 +171,7 @@ def _fallback_available(ctx: ScoutContext) -> bool:
             if ctx.api_keys.get(env_name):
                 return True
             env_val = os.environ.get(env_name)
-            if env_val and env_val.strip():
-                return True
-            return False
+            return bool(env_val and env_val.strip())
     return False
 
 
