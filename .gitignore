@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.pyc
+
+# uv
+uv.lock.tmp
+
+# Local
+dscout-out/
+mycorpus/
+*.local.*
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

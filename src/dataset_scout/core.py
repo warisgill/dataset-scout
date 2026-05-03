@@ -1,0 +1,236 @@
+"""Core types — the typed vocabulary of dataset-scout.
+
+Reference: `TECH_DESIGN.md` §3. All Pydantic v2 so we get JSON Schema
+export and serialization for free.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from datetime import date
+from enum import StrEnum
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# ─── Intent ──────────────────────────────────────────────────────────
+
+
+class SensitiveDomain(StrEnum):
+    NONE = "none"
+    GATED = "gated"
+    REFUSED = "refused"
+
+
+class LicensePolicy(BaseModel):
+    """Permissive-by-default license policy."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    allow: frozenset[str] = Field(
+        default=frozenset(
+            {
+                "MIT",
+                "Apache-2.0",
+                "BSD-3-Clause",
+                "BSD-2-Clause",
+                "CC-BY-4.0",
+                "CC0-1.0",
+                "ODC-BY-1.0",
+            }
+        )
+    )
+    warn_only: frozenset[str] = Field(
+        default=frozenset({"CC-BY-SA-4.0", "GPL-3.0", "AGPL-3.0", "OpenRAIL-M"})
+    )
+
+    @field_validator("allow", "warn_only", mode="before")
+    @classmethod
+    def _coerce_to_frozenset(cls, v: Any) -> Any:
+        if isinstance(v, (list, tuple, set)):
+            return frozenset(v)
+        return v
+
+
+class Intent(BaseModel):
+    """Structured form of the user's natural-language brief."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    raw_brief: str
+    detection_target: str | None = None
+    threat_families: list[str] = Field(default_factory=list)
+    deployment_context: str | None = None
+    languages: list[str] = Field(default_factory=lambda: ["en"])
+    license_policy: LicensePolicy = Field(default_factory=LicensePolicy)
+    must_have: list[str] = Field(default_factory=list)
+    nice_to_have: list[str] = Field(default_factory=list)
+    must_not: list[str] = Field(default_factory=list)
+    sensitive_domain: SensitiveDomain = SensitiveDomain.NONE
+    min_strategy_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+
+    def stable_hash(self) -> str:
+        """Stable across machines. Used as a cache key ingredient."""
+        payload = self.model_dump(mode="json")
+        lp = payload.get("license_policy") or {}
+        for k in ("allow", "warn_only"):
+            if k in lp and isinstance(lp[k], (list, set, frozenset)):
+                lp[k] = sorted(lp[k])
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+class DecompositionDirection(BaseModel):
+    """One of 3-7 related search directions produced by the LLM decomposer."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    rationale: str
+    keywords: list[str] = Field(default_factory=list)
+    threat_families: list[str] = Field(default_factory=list)
+    expected_finds: str = ""
+
+
+# ─── Candidate ───────────────────────────────────────────────────────
+
+
+class Candidate(BaseModel):
+    """A dataset surfaced by a Source plugin."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source: str
+    id: str
+    revision: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    streamable: bool = True
+    requires_auth: bool = False
+    content_date_range: tuple[date, date] | None = None
+    direction: str | None = None
+
+
+# ─── Probes / SubScores ──────────────────────────────────────────────
+
+SubScoreStatus = Literal["ok", "not_applicable", "low_confidence", "skipped"]
+
+
+class Evidence(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: str
+    detail: str
+    url: str | None = None
+    value: float | None = None
+
+
+class SubScore(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    value: float | None
+    confidence_interval: tuple[float, float] | None = None
+    n: int | None = None
+    status: SubScoreStatus = "ok"
+    evidence: list[Evidence] = Field(default_factory=list)
+    probe_version: str = "0"
+
+
+class LicenseSummary(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    spdx_guess: str | None
+    raw_string: str
+    nonstandard_clauses_detected: bool = False
+    notes: list[str] = Field(default_factory=list)
+
+
+# ─── Strategy ────────────────────────────────────────────────────────
+
+
+class StrategyKind(StrEnum):
+    DIRECT_USE = "direct_use"
+    SUBSET_EXTRACTION = "subset_extraction"
+    LABEL_REMAPPING = "label_remapping"
+    CROSS_CLASS_REPURPOSING = "cross_class_repurposing"
+    SIGNAL_PROXY = "signal_proxy"
+    BENIGN_BASELINE = "benign_baseline"
+    COMPOSITION_ONLY = "composition_only"
+    NOT_USEFUL = "not_useful"
+
+
+class LabelKind(StrEnum):
+    GROUND_TRUTH = "ground_truth"
+    REMAPPED = "remapped"
+    PROXY = "proxy"
+    SUBSET_EXTRACTED = "subset_extracted"
+
+
+class TransformSpec(BaseModel):
+    """Concrete shape of the transform a Strategy applies."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    text_column: str | None = None
+    label_column: str | None = None
+    label_value_map: dict[str, Literal["positive", "benign", "hard_negative"]] = Field(
+        default_factory=dict
+    )
+    label_kind_map: dict[str, str] = Field(default_factory=dict)
+    filter: str | None = None
+    take: int | Literal["all"] = "all"
+
+
+class Strategy(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: StrategyKind
+    confidence: float = Field(ge=0.0, le=1.0)
+    rationale: str
+    caveats: list[str] = Field(default_factory=list)
+    transform: TransformSpec
+    composes_with: list[str] = Field(default_factory=list)
+
+
+# ─── Scorecard ───────────────────────────────────────────────────────
+
+
+class Scorecard(BaseModel):
+    """Per-candidate aggregation of probe outputs and strategy assessments."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    candidate: Candidate
+    cheap_probes: dict[str, SubScore] = Field(default_factory=dict)
+    label_intent_fit: SubScore | None = None
+    strategies: list[Strategy] = Field(default_factory=list)
+    license_summary: LicenseSummary | None = None
+    explanation: str = ""
+
+    @property
+    def best_strategy(self) -> Strategy | None:
+        if not self.strategies:
+            return None
+        return max(self.strategies, key=lambda s: s.confidence)
+
+
+# ─── Coverage report ─────────────────────────────────────────────────
+
+
+class CoverageGap(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    aspect: str
+    description: str
+    suggestion: str
+
+
+class CoverageReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decomposition: list[DecompositionDirection] = Field(default_factory=list)
+    semantic_gaps: list[CoverageGap] = Field(default_factory=list)
+
+    @property
+    def notable(self) -> bool:
+        return len(self.semantic_gaps) >= 2
