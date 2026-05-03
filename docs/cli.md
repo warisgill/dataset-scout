@@ -80,21 +80,56 @@ the brief should express:
 
 ---
 
-## `inspect` *(M3 — not yet implemented)*
+## `inspect`
 
-Deep-dive on one candidate. Will print a single candidate's full
-metadata envelope, label distribution (with Wilson 95% CIs), schema,
-sample rows, license summary, and full strategy assessment against
-the most recent intent.
+One-candidate deep-dive. Renders to **stdout** so it pipes cleanly:
+`datascout inspect huggingface:org/x > inspect.md`.
 
 ```bash
-datascout inspect <source>:<id>[@revision]
-datascout inspect huggingface:deepset/prompt-injections@4f61ecb038e9
+datascout inspect <source>:<id>[@revision] [options]
 ```
 
-| Option | Description |
-|---|---|
-| `--intent-from PATH` | Re-use the most recent recon's Intent (point at `results.json`). |
+### Arguments
+
+| Argument | Required | Description |
+|---|---|---|
+| `TARGET` | yes | `<source>:<id>[@revision]` — e.g. `huggingface:deepset/prompt-injections`. The `<source>:` prefix is optional and defaults to `huggingface`. |
+
+### Options
+
+| Option | Default | Description |
+|---|---|---|
+| `--intent-from PATH` | — | Re-use the most recent recon's Intent (point at `results.json`). The strategy assessor sees the same Intent recon used, so the assessment is consistent. |
+| `--brief TEXT` | — | One-off brief for strategy assessment when no recon `results.json` exists. Mutually exclusive with `--intent-from`. |
+| `--sample-size INT` | `50` | Rows to stream for the schema / label-distribution / sample sections. |
+
+### What it shows
+
+1. **Identity** — `source:id`, revision, card URL, description, gating posture.
+2. **License** — raw card declaration plus a best-effort SPDX guess.
+3. **Card-declared metadata** — languages, task categories, tags, dates, popularity.
+4. **Inferred schema** — column names + types from the streamed sample.
+5. **Label distribution** — count and Wilson 95% CI per value when a label column is detected.
+6. **Text-length stats** — min / median / max characters for the heuristically-picked text column.
+7. **Sample rows** — first five.
+8. **Strategy assessment** — when `--intent-from` or `--brief` is supplied AND AOAI is configured.
+9. **Notices** — any degraded-mode behaviour (no AOAI, metadata fetch hiccup, etc.).
+
+### Examples
+
+```bash
+# Quick metadata-only deep-dive
+datascout inspect huggingface:deepset/prompt-injections
+
+# With a fresh brief — adds LLM strategy assessment if AOAI is set
+datascout inspect huggingface:deepset/prompt-injections --brief "find labeled prompt injection corpora"
+
+# Re-use the Intent from your latest recon
+datascout inspect huggingface:walledai/AdvBench --intent-from datascout-out/results.json
+
+# Pin a specific revision
+datascout inspect huggingface:deepset/prompt-injections@4f61ecb038e9
+```
 
 ---
 

@@ -65,7 +65,8 @@ src/dataset_scout/
 ├── __init__.py             public API: recon(), inspect(), curate(), types
 ├── context.py              ScoutContext (frozen Pydantic, no global state)
 ├── core.py                 Intent, Candidate, CandidateMetadata, Scorecard,
-│                           Strategy, ReconResult, … — the typed vocabulary
+│                           Strategy, ReconResult, InspectResult,
+│                           NormalizedRecord, … — the typed vocabulary
 ├── errors.py               DatasetScoutError, LLMError, SourceUnavailableError, …
 ├── events.py               ProgressEvent / ProgressEventKind
 ├── intent.py               HeuristicIntentParser
@@ -74,7 +75,11 @@ src/dataset_scout/
 ├── strategy.py             LLM per-candidate strategy assessor
 ├── coverage.py             LLM coverage-gap report
 ├── shortlist.py            two-stage selector for the assessor
+├── recipe.py               typed Recipe / RecipeComponent / RecipeTransform models
 ├── recipe_draft.py         recipe.draft.yaml emission
+├── inspect_.py             single-candidate deep-dive (M3)
+├── curate.py               recipe → corpus orchestrator (M4a preview)
+├── stats.py                Wilson score CI helper
 ├── pipeline.py             run_recon orchestrator
 ├── licenses.py             tiny SPDX guesser
 ├── cli.py                  Typer app (thin wrapper)
@@ -86,7 +91,8 @@ src/dataset_scout/
 │   └── cheap.py            6 metadata-driven probes
 └── render/
     ├── json_writer.py      results.json
-    └── markdown_report.py  report.md (4 framings)
+    ├── markdown_report.py  report.md (4 framings)
+    └── inspect_panel.py    inspect deep-dive markdown
 ```
 
 ---

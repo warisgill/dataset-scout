@@ -32,61 +32,20 @@ datascout recon "find labeled prompt injection corpora for a RAG app"
 
 ## What you get today
 
-When you run `datascout recon "<brief>"`:
+End-to-end working flow:
 
-1. **Brief parsing.** Heuristic parser pulls out languages, threat
-   families, deployment context, license preferences. No LLM required
-   for this step.
-2. **Decomposition** *(when Azure OpenAI is configured)*. The LLM
-   proposes 3–7 related search directions adjacent to your brief —
-   reframings, hard-negative families, benign baselines, signal proxies
-   you might have missed.
-3. **Multi-direction search across HuggingFace.** Each direction
-   becomes its own HF query; results dedupe into one pool with full
-   provenance: every candidate keeps the list of directions that
-   surfaced it.
-4. **Cheap probes.** Six metadata-driven signals per candidate:
-   license (with SPDX best-effort guess), size, recency, freshness
-   bucket, declared languages, card-completeness. Each emits a
-   `SubScore` with explicit evidence — no aggregate "quality score."
-5. **Two-stage shortlist.** Top-k per direction for breadth, then a
-   global re-rank by multi-direction hits + license sanity + card
-   hygiene caps the assessor input at 15–20 candidates.
-6. **Per-candidate strategy assessment** *(LLM)*. Each shortlisted
-   candidate gets 1–4 ranked strategies from the 7-kind taxonomy
-   (`direct_use`, `subset_extraction`, `label_remapping`,
-   `cross_class_repurposing`, `signal_proxy`, `benign_baseline`,
-   `not_useful`). Each carries a confidence, a rationale, caveats,
-   and a concrete transform spec.
-7. **Coverage report** *(LLM)*. After assessment, the model is asked
-   what aspects of your target *no* candidate covers — even via
-   reframing — and what concrete next steps would close each gap.
-8. **Discovery report + structured results + draft recipe.**
-   `datascout-out/report.md` leads with the strongest defensible fits;
-   per-candidate sections show the chosen strategy, caveats, and
-   transform. `datascout-out/results.json` is the same data as JSON.
-   `datascout-out/recipe.draft.yaml` is hand-editable input for
-   `datascout curate`.
+1. **`datascout recon "<brief>"`** — discovery + decomposition + per-candidate strategy assessment + coverage gaps → `report.md` + `results.json` + `recipe.draft.yaml`.
+2. **`datascout inspect <source>:<id>`** — single-candidate deep-dive with schema, label distribution (Wilson 95% CIs), sample rows, license, and strategy assessment.
+3. **`datascout curate --from recipe.yaml --out ./mycorpus`** — recipe → schema-normalized JSONL + lockfile + manifest + report + fingerprint + usage. *(M4a preview: hash-mod split, MinHash dedup + leakage-aware splitter land in M4b.)*
 
-When AOAI isn't configured the tool **degrades cleanly** to
-metadata-only mode (search + cheap probes only) and tells you exactly
-what to set.
+When AOAI isn't configured, recon and inspect **degrade cleanly** to metadata-only mode and tell you exactly what to set.
+
+➡️ **[`docs/getting-started.md`](docs/getting-started.md)** is a step-by-step walkthrough from zero to a curated corpus.
 
 ## What's coming
 
-The end-to-end vision (per
-[`docs/architecture.md`](docs/architecture.md#milestones)):
-
-- **M3 — `datascout inspect`.** One-candidate deep-dive with full
-  strategy assessment.
-- **M4b — full audit-grade curate.** The current `curate` is a
-  **preview**: deterministic hash-mod split + multimodal coercion +
-  filter-DSL hard-fail. M4b adds MinHash dedup, leakage-aware
-  splitting, and a minimal filter expression DSL — turning the
-  output into the defensible audit artefact reviewers can ask about.
-- **M1b** (deferred, parallel track): embedding label-intent fit,
-  Kaggle and Papers-With-Code sources, sample-driven probes,
-  SQLite cache.
+- **M4b — audit-grade `curate`.** MinHash dedup + leakage-aware splitter + minimal filter expression DSL. Flips `recipe.lock.yaml`'s `audit_readiness` from `preview` to `ready`.
+- **M1b** (deferred, parallel track): embedding label-intent fit, Kaggle and Papers-With-Code sources, sample-driven probes, SQLite cache.
 
 See [`docs/architecture.md`](docs/architecture.md) for the full picture.
 
@@ -109,16 +68,11 @@ See [`docs/architecture.md`](docs/architecture.md) for the full picture.
 
 ## Documentation
 
-- **[Concepts](docs/concepts.md)** — the mental model: discovery vs
-  ranking, strategy taxonomy, label kinds, why we never ship a single
-  "quality score."
-- **[Configuration](docs/configuration.md)** — `ScoutContext`, Azure
-  OpenAI + Entra setup (`az login`), HuggingFace tokens, every
-  recognised env var.
-- **[CLI reference](docs/cli.md)** — every verb, every flag, with
-  worked examples.
-- **[Architecture](docs/architecture.md)** — pipeline diagram, source
-  plugin contract, probe protocol, mode detection, milestone status.
+- **[Getting started](docs/getting-started.md)** — install, configure, run your first recon → inspect → curate end-to-end.
+- **[Concepts](docs/concepts.md)** — the mental model: discovery vs ranking, strategy taxonomy, label kinds, why we never ship a single "quality score."
+- **[Configuration](docs/configuration.md)** — `ScoutContext`, Azure OpenAI + Entra setup (`az login`), HuggingFace tokens, every recognised env var.
+- **[CLI reference](docs/cli.md)** — every verb, every flag, with worked examples.
+- **[Architecture](docs/architecture.md)** — pipeline diagram, source plugin contract, probe protocol, mode detection, milestone status.
 
 ---
 
