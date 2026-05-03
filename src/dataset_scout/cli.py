@@ -61,6 +61,15 @@ def _root(
     ] = None,
 ) -> None:
     """dataset-scout — find and curate public datasets for detection work."""
+    import contextlib
+
+    # Make stdout/stderr UTF-8 so emoji/unicode in reports render on
+    # Windows consoles (cp1252 by default).
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            with contextlib.suppress(Exception):
+                reconfigure(encoding="utf-8")
     _load_dotenv()
 
 
@@ -161,12 +170,59 @@ def inspect(
         Path | None,
         typer.Option(
             "--intent-from",
-            help="Re-use the most recent recon's Intent (results.json).",
+            help="Re-use the most recent recon's Intent (point at results.json).",
         ),
     ] = None,
+    brief: Annotated[
+        str | None,
+        typer.Option(
+            "--brief",
+            help="One-off brief for strategy assessment when no recon results.json exists.",
+        ),
+    ] = None,
+    sample_size: Annotated[
+        int,
+        typer.Option(
+            "--sample-size",
+            help="Rows to stream for the schema/label-distribution/sample sections.",
+            min=1,
+            max=1000,
+        ),
+    ] = 50,
 ) -> None:
-    err.print("[yellow]inspect is not implemented yet (lands in M3).[/yellow]")
-    raise typer.Exit(code=2)
+    from dataset_scout.context import ScoutContext
+    from dataset_scout.errors import DatasetScoutError
+    from dataset_scout.inspect_ import make_intent, run_inspect
+    from dataset_scout.render import render_inspect
+
+    if intent_from is not None and brief is not None:
+        err.print("[red]error:[/red] pass either --intent-from or --brief, not both.")
+        raise typer.Exit(code=1)
+
+    try:
+        intent = make_intent(brief=brief, intent_from=intent_from)
+    except DatasetScoutError as e:
+        err.print(f"[red]error:[/red] {e}")
+        raise typer.Exit(code=1) from e
+
+    ctx = ScoutContext.from_env(is_tty=sys.stderr.isatty())
+
+    try:
+        result = run_inspect(
+            target,
+            ctx=ctx,
+            intent=intent,
+            sample_size=sample_size,
+        )
+    except DatasetScoutError as e:
+        err.print(f"[red]error:[/red] {e}")
+        raise typer.Exit(code=1) from e
+
+    # Inspect prints to stdout (so it works in pipes).
+    typer.echo(render_inspect(result))
+    if result.notices:
+        for n in result.notices:
+            err.print(f"[dim]note:[/dim] {n}")
 
 
 # ─── curate ─────────────────────────────────────────────────────────

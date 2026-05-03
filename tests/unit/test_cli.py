@@ -33,7 +33,6 @@ def test_version(runner: CliRunner):
 @pytest.mark.parametrize(
     "argv",
     [
-        ["inspect", "huggingface:deepset/prompt-injections"],
         ["cache", "info"],
         ["sources", "enable", "kaggle"],
     ],

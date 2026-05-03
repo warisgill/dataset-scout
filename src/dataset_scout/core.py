@@ -363,6 +363,61 @@ class NormalizedRecord(BaseModel):
     extras_coercion: bool = False
 
 
+# ─── Inspect result (M3 — single-candidate deep-dive) ────────────────
+
+
+class LabelBucket(BaseModel):
+    """One bucket in the inspect-time label distribution."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    raw_value: str  # the source-side label value, stringified
+    count: int
+    fraction: float = Field(ge=0.0, le=1.0)
+    ci_low: float = Field(ge=0.0, le=1.0)
+    ci_high: float = Field(ge=0.0, le=1.0)
+
+
+class LengthStats(BaseModel):
+    """Min/median/max of the text column's character length."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    column: str
+    n: int
+    min: int
+    median: int
+    max: int
+
+
+class InspectResult(BaseModel):
+    """Output of `datascout inspect`: a deep-dive on a single candidate.
+
+    Library callers receive this directly; the CLI renders it to stdout
+    via `dataset_scout.render.inspect_panel`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    candidate: Candidate
+    license_summary: LicenseSummary | None = None
+
+    # Inferred from a small streamed sample.
+    sample_size: int
+    columns: list[ColumnInfo] = Field(default_factory=list)
+    label_distribution: list[LabelBucket] = Field(default_factory=list)
+    label_column_used: str | None = None
+    length_stats: LengthStats | None = None
+    sample_rows: list[dict[str, Any]] = Field(default_factory=list)
+
+    # LLM assessment when AOAI is configured.
+    strategies: list[Strategy] = Field(default_factory=list)
+    intent_used: Intent | None = None
+
+    elapsed_seconds: float = 0.0
+    notices: list[str] = Field(default_factory=list)
+
+
 # ─── Recon result ────────────────────────────────────────────────────
 
 

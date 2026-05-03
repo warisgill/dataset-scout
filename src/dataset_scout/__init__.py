@@ -23,8 +23,11 @@ from dataset_scout.core import (
     CoverageReport,
     DecompositionDirection,
     Evidence,
+    InspectResult,
     Intent,
+    LabelBucket,
     LabelKind,
+    LengthStats,
     LicensePolicy,
     LicenseSummary,
     NormalizedRecord,
@@ -67,9 +70,38 @@ def recon(
     )
 
 
-def inspect(*args: object, **kwargs: object) -> object:
-    """Inspect one candidate. Stub until M3."""
-    raise NotImplementedError("inspect lands in M3")
+def inspect(
+    target: str,
+    *,
+    ctx: ScoutContext | None = None,
+    intent: object | None = None,
+    intent_from: str | Path | None = None,
+    brief: str | None = None,
+    sample_size: int = 50,
+) -> object:
+    """Run a single-candidate deep-dive.
+
+    Pass exactly one of `intent`, `intent_from`, or `brief` to drive
+    LLM strategy assessment. With none of them, assessment is skipped
+    and only the metadata + sample sections are produced.
+    """
+    from pathlib import Path as _Path
+
+    from dataset_scout.context import ScoutContext as _Ctx
+    from dataset_scout.inspect_ import make_intent, run_inspect
+
+    resolved_intent = intent
+    if resolved_intent is None and (intent_from or brief):
+        resolved_intent = make_intent(
+            brief=brief,
+            intent_from=_Path(intent_from) if intent_from else None,
+        )
+    return run_inspect(
+        target,
+        ctx=ctx if ctx is not None else _Ctx.from_env(),
+        intent=resolved_intent,  # type: ignore[arg-type]
+        sample_size=sample_size,
+    )
 
 
 def curate(
@@ -111,9 +143,12 @@ __all__ = [
     "DatasetScoutError",
     "DecompositionDirection",
     "Evidence",
+    "InspectResult",
     "Intent",
     "LLMError",
+    "LabelBucket",
     "LabelKind",
+    "LengthStats",
     "LicensePolicy",
     "LicenseSummary",
     "NormalizedRecord",
