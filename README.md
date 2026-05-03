@@ -49,25 +49,34 @@ When you run `datascout recon "<brief>"`:
    license (with SPDX best-effort guess), size, recency, freshness
    bucket, declared languages, card-completeness. Each emits a
    `SubScore` with explicit evidence — no aggregate "quality score."
-5. **Discovery report + structured results.**
-   `datascout-out/report.md` lists candidates in source-relevance order
-   with badges, surfacing-direction annotations, and per-probe
-   evidence tables. `datascout-out/results.json` is the same data as
-   pure JSON for downstream tooling.
+5. **Two-stage shortlist.** Top-k per direction for breadth, then a
+   global re-rank by multi-direction hits + license sanity + card
+   hygiene caps the assessor input at 15–20 candidates.
+6. **Per-candidate strategy assessment** *(LLM)*. Each shortlisted
+   candidate gets 1–4 ranked strategies from the 7-kind taxonomy
+   (`direct_use`, `subset_extraction`, `label_remapping`,
+   `cross_class_repurposing`, `signal_proxy`, `benign_baseline`,
+   `not_useful`). Each carries a confidence, a rationale, caveats,
+   and a concrete transform spec.
+7. **Coverage report** *(LLM)*. After assessment, the model is asked
+   what aspects of your target *no* candidate covers — even via
+   reframing — and what concrete next steps would close each gap.
+8. **Discovery report + structured results + draft recipe.**
+   `datascout-out/report.md` leads with the strongest defensible fits;
+   per-candidate sections show the chosen strategy, caveats, and
+   transform. `datascout-out/results.json` is the same data as JSON.
+   `datascout-out/recipe.draft.yaml` is hand-editable input for
+   `datascout curate`.
 
 When AOAI isn't configured the tool **degrades cleanly** to
-metadata-only mode and tells you exactly what to set.
+metadata-only mode (search + cheap probes only) and tells you exactly
+what to set.
 
 ## What's coming
 
 The end-to-end vision (per
 [`docs/architecture.md`](docs/architecture.md#milestones)):
 
-- **M2b — strategy assessment.** Per-candidate ranked strategies from
-  an 8-kind taxonomy (`direct_use`, `subset_extraction`,
-  `label_remapping`, `cross_class_repurposing`, `signal_proxy`, …).
-  Plus an LLM-described coverage-gap report and a
-  `recipe.draft.yaml`.
 - **M3 — `datascout inspect`.** One-candidate deep-dive with full
   strategy assessment.
 - **M4 — `datascout curate`.** Recipe → schema-normalized JSONL +

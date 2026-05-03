@@ -36,16 +36,17 @@ datascout recon "<brief>" [options]
 | `--deployment-context TEXT` | parser-derived | Production / RAG / agent / etc. |
 | `--language TEXT` | `en` | Required language(s); repeat for multiple. |
 | `--license TEXT` | permissive set | License allowlist; repeat for multiple. |
-| `--min-strategy-confidence FLOAT` | `0.5` | (M2b) Strategies below this confidence are filtered from the draft recipe. |
+| `--min-strategy-confidence FLOAT` | `0.5` | Strategies below this confidence are filtered out of the draft recipe. Recipe-authoritative — `curate` defaults to the value baked into the recipe. |
 | `--out PATH` | `datascout-out/` | Output directory. |
 
 ### Outputs
 
 ```
 <out>/
-├── report.md          discovery + decomposition + per-candidate annotations
+├── report.md          discovery + decomposition + per-candidate strategies + coverage gaps
 ├── results.json       structured ReconResult (Pydantic dump)
-└── recipe.draft.yaml  (M2b — not emitted yet)
+└── recipe.draft.yaml  hand-editable input for `datascout curate` (M4)
+                       — emitted only when LLM strategies were assessed
 ```
 
 ### Examples

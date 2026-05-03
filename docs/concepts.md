@@ -18,9 +18,11 @@ fits your detection task. Without a semantic-fit signal (embedding fit
 + LLM strategy assessment, both later milestones), aggregating those
 into a fitness score would imply confidence we don't have.
 
-When the LLM strategy assessor lands (M2b) the framing changes:
-candidates carry per-strategy confidence and the report leads with the
-strongest defensible reframings. Until then: discovery, with receipts.
+When the LLM strategy assessor runs (full mode) the framing changes:
+candidates carry per-strategy confidence, the report leads with the
+strongest defensible reframings, and `recipe.draft.yaml` lands in the
+output directory. In metadata-only mode it stays pure discovery, with
+receipts.
 
 ---
 
@@ -30,8 +32,8 @@ The pipeline picks one of two modes at start-up.
 
 | Mode | Trigger | What runs |
 |---|---|---|
-| **Full** | Azure OpenAI configured (`AZURE_OPENAI_ENDPOINT` + `_DEPLOYMENT`) | Brief parsing → LLM decomposition → multi-direction HF search → cheap probes → *(M2b: strategy assessor + coverage)* |
-| **Metadata-only** | AOAI not configured | Brief parsing → single-query HF search → cheap probes |
+| **Full** | Azure OpenAI configured (`AZURE_OPENAI_ENDPOINT` + `_DEPLOYMENT`) | Brief parsing → LLM decomposition → multi-direction HF search → cheap probes → two-stage shortlist → per-candidate strategy assessor → coverage gaps → ranked report + `recipe.draft.yaml` |
+| **Metadata-only** | AOAI not configured | Brief parsing → single-query HF search → cheap probes (no decomposition, no strategies, no recipe draft) |
 
 The fallback is **explicit and noisy** — you'll see a notice on stderr
 and a prominent header in `report.md` telling you what to set. No
@@ -101,10 +103,10 @@ a candidate self-report `not_applicable` instead of fabricating a value.
 
 ---
 
-## 5. The strategy taxonomy *(M2b — preview)*
+## 5. The strategy taxonomy
 
-Per-candidate, the LLM strategy assessor will return one or more
-`Strategy` objects from this 8-kind taxonomy:
+Per-candidate, the LLM strategy assessor returns 1–4 ranked `Strategy`
+objects from this 7-kind taxonomy:
 
 | Kind | Meaning |
 |---|---|
@@ -114,14 +116,18 @@ Per-candidate, the LLM strategy assessor will return one or more
 | `cross_class_repurposing` | Original positives → hard-negatives, or vice versa. |
 | `signal_proxy` | Adjacent threat used as proxy positive during cold start. |
 | `benign_baseline` | No relevant positives, but useful as benign distribution. |
-| `composition_only` | Useful only when paired with another corpus *(reserved; portfolio-level pass)*. |
 | `not_useful` | The honest answer when nothing fits. |
+
+(An eighth kind — `composition_only` — is reserved in the enum for a
+future portfolio-level pass, when the assessor evaluates pairs/triples
+rather than single candidates. Per-candidate assessments today never
+emit it.)
 
 Each strategy carries a `confidence ∈ [0, 1]`, a written rationale,
 caveats, and a concrete `transform` spec (column maps, label
 value-maps, filters). The assessor is **conservative-but-creative**:
 stretches get low confidence, and `--min-strategy-confidence` filters
-aggressive reframings.
+aggressive reframings out of the draft recipe.
 
 ---
 
@@ -141,13 +147,13 @@ tools should filter to `label_kind != "proxy"` for evaluation.
 
 ---
 
-## 7. Recipes and lockfiles *(M4 — preview)*
+## 7. Recipes and lockfiles
 
 The output of `recon` includes a `recipe.draft.yaml`. Hand-edit it
 (adjust strategies, drop candidates, add explicit components), then
-hand it to `datascout curate --from recipe.yaml`.
+hand it to `datascout curate --from recipe.yaml` *(M4 — coming next)*.
 
-`curate` materialises the recipe into:
+`curate` will materialise the recipe into:
 
 ```
 mycorpus/

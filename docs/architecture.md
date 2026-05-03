@@ -35,17 +35,23 @@ Cheap probes (license, size, recency, freshness, languages, card_completeness)
 Scorecard per candidate
     │
     ▼
-[M2b] LLM strategy assessor on top-15-20  ─────► Strategy[] per candidate
+select_top_for_assessor (stage-1 per-direction, stage-2 quality re-rank)
     │
     ▼
-[M2b] LLM coverage report  ──────────────────► CoverageGap[]
+LLM strategy assessor on top-15-20  ─────► Strategy[] per candidate
+    │
+    ▼
+LLM coverage report  ──────────────────► CoverageGap[]
+    │
+    ▼
+re-rank scorecards by best_strategy + kind bonus
     │
     ▼
 ReconResult ─── render ──▶  report.md
                          │
                          └▶  results.json
                          │
-                         └▶  recipe.draft.yaml  [M2b]
+                         └▶  recipe.draft.yaml
 ```
 
 Plain Python iterator pipeline. No DAG framework, no Celery, no Ray.
@@ -63,7 +69,12 @@ src/dataset_scout/
 ├── errors.py               DatasetScoutError, LLMError, SourceUnavailableError, …
 ├── events.py               ProgressEvent / ProgressEventKind
 ├── intent.py               HeuristicIntentParser
+├── llm_client.py           shared AOAI/Entra plumbing for LLM call sites
 ├── decompose.py            LLM decomposition (Azure OpenAI + Entra)
+├── strategy.py             LLM per-candidate strategy assessor
+├── coverage.py             LLM coverage-gap report
+├── shortlist.py            two-stage selector for the assessor
+├── recipe_draft.py         recipe.draft.yaml emission
 ├── pipeline.py             run_recon orchestrator
 ├── licenses.py             tiny SPDX guesser
 ├── cli.py                  Typer app (thin wrapper)
@@ -75,7 +86,7 @@ src/dataset_scout/
 │   └── cheap.py            6 metadata-driven probes
 └── render/
     ├── json_writer.py      results.json
-    └── markdown_report.py  report.md
+    └── markdown_report.py  report.md (4 framings)
 ```
 
 ---
@@ -243,11 +254,11 @@ prompts are **snapshot-tested** — drift surfaces as a PR diff.
 |---|---|---|
 | M0 | ✅ done | scaffolding: pyproject, src layout, core types, CLI stubs, 30 tests |
 | M1a | ✅ done | discovery slice — HF, 6 cheap probes, report.md / results.json, FakeSource, recorded harness |
-| M1b | ⏳ deferred | sample-driven probes, embedding fit, Kaggle, PWC, cache, recipe.draft.yaml |
+| M1b | ⏳ deferred | sample-driven probes, embedding fit, Kaggle, PWC, cache |
 | M2a | ✅ done | Azure OpenAI Entra, LLM decomposition, multi-direction search, surfaced_by, mode detection |
-| M2b | ⏳ next | strategy assessor, coverage report, recipe.draft.yaml, prompt snapshots |
+| M2b | ✅ done | strategy assessor, coverage report, recipe.draft.yaml, two-stage shortlist, ranked report |
 | M3 | ⏳ | `inspect` deep-dive |
-| M4 | ⏳ | `curate`: normalized JSONL, MinHash dedup, leakage-aware splits, lockfile |
+| M4 | 🔄 next | `curate`: normalized JSONL, MinHash dedup, leakage-aware splits, recipe.lock.yaml |
 | M5 | ⏳ | real-brief validation, ship 1.0 |
 
 Detail in [`docs/concepts.md`](concepts.md) and the (archived)
