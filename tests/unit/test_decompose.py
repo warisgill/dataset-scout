@@ -16,7 +16,6 @@ from dataset_scout import (
     ScoutContext,
 )
 from dataset_scout.decompose import (
-    DecomposeResponse,
     decompose_intent,
     llm_available,
     render_decompose_prompt,
@@ -189,7 +188,7 @@ def test_decompose_routes_via_azure_with_token_provider(
     assert "api_key" not in captured
 
     assert captured["timeout"] == 30.0
-    assert captured["response_format"] is DecomposeResponse
+    assert captured["response_format"] == {"type": "json_object"}
     msgs = captured["messages"]
     assert msgs[0]["role"] == "user"
     assert "3-7" in msgs[0]["content"]

@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 from dataset_scout.context import ScoutContext
 from dataset_scout.core import (
     Candidate,
+    CoverageGap,
     CoverageReport,
     DecompositionDirection,
     ReconResult,
@@ -48,6 +49,18 @@ METADATA_ONLY_NOTICE = (
     "decomposition, strategy assessment, and coverage gaps were skipped. "
     "To enable them, copy .env.example to .env, set AZURE_OPENAI_ENDPOINT "
     "and AZURE_OPENAI_DEPLOYMENT, and run `az login`."
+)
+
+
+# Companion hint shown when AOAI IS configured but a call failed at
+# runtime — the deployment is wrong, the token couldn't be acquired,
+# the network is unreachable, etc. The specific error is already in
+# the notice list above this; this just orients the user.
+LLM_RUNTIME_HINT = (
+    "Azure OpenAI was configured but the call failed (see error above). "
+    "Common causes: AZURE_OPENAI_DEPLOYMENT name doesn't exist on the "
+    "endpoint, expired Entra token (`az login` again), network issue, "
+    "or quota exhausted. Pipeline continued in metadata-only mode."
 )
 
 
@@ -163,6 +176,7 @@ def run_recon(
 
     directions: list[DecompositionDirection] = []
     use_llm = explore
+    llm_runtime_error: bool = False  # True iff configured but call failed
     if use_llm:
         from dataset_scout.decompose import decompose_intent, llm_available
 
@@ -174,7 +188,9 @@ def run_recon(
                 directions = decompose_intent(intent, ctx=ctx)
             except LLMError as exc:
                 notices.append(f"decomposition skipped: {exc}")
+                notices.append(LLM_RUNTIME_HINT)
                 use_llm = False
+                llm_runtime_error = True
                 directions = []
             else:
                 for d in directions:
@@ -190,7 +206,10 @@ def run_recon(
                 message=f"proposed {len(directions)} direction(s)",
             )
 
-    if not use_llm:
+    # Only emit the "AOAI not configured" notice when AOAI genuinely
+    # isn't configured. If the call failed at runtime, we already have
+    # the specific error + LLM_RUNTIME_HINT in the notices.
+    if not use_llm and not llm_runtime_error:
         notices.append(METADATA_ONLY_NOTICE)
 
     if sources is None:
@@ -250,9 +269,59 @@ def run_recon(
         message=f"scored {len(scorecards)} candidate(s) with {len(probes)} probes",
     )
 
+    # ─── Strategy assessment + coverage (M2b) ──
+    semantic_gaps: list[CoverageGap] = []
+    if use_llm and scorecards:
+        from dataset_scout.coverage import build_coverage_report
+        from dataset_scout.shortlist import select_top_for_assessor
+        from dataset_scout.strategy import assess_strategies
+
+        shortlist = select_top_for_assessor(scorecards)
+        _emit(
+            ProgressEventKind.STAGE_STARTED,
+            stage="assess",
+            message=f"assessing {len(shortlist)} candidate(s)",
+        )
+        for sc in shortlist:
+            try:
+                sc.strategies = assess_strategies(sc.candidate, intent, ctx=ctx)
+            except LLMError as exc:
+                notices.append(
+                    f"strategy assessment skipped for {sc.candidate.source}:"
+                    f"{sc.candidate.id}: {exc}"
+                )
+                continue
+            _emit(
+                ProgressEventKind.STRATEGY_ASSESSED,
+                stage="assess",
+                id=sc.candidate.id,
+                strategies=[s.kind.value for s in sc.strategies],
+            )
+        _emit(ProgressEventKind.STAGE_FINISHED, stage="assess")
+
+        if any(sc.strategies for sc in scorecards):
+            _emit(ProgressEventKind.STAGE_STARTED, stage="coverage")
+            try:
+                semantic_gaps = build_coverage_report(intent, directions, scorecards, ctx=ctx)
+            except LLMError as exc:
+                notices.append(f"coverage report skipped: {exc}")
+                semantic_gaps = []
+            _emit(
+                ProgressEventKind.STAGE_FINISHED,
+                stage="coverage",
+                message=f"identified {len(semantic_gaps)} gap(s)",
+            )
+
+            # Re-rank scorecards by best_strategy + kind bonus so the
+            # report leads with the strongest fits. Candidates without
+            # an assessed strategy keep their relative order at the bottom.
+            scorecards.sort(key=_strategy_rank_key, reverse=True)
+
     elapsed = time.monotonic() - started
 
-    coverage = CoverageReport(decomposition=directions) if directions else None
+    coverage: CoverageReport | None = None
+    if directions or semantic_gaps:
+        coverage = CoverageReport(decomposition=directions, semantic_gaps=semantic_gaps)
 
     return ReconResult(
         intent=intent,
@@ -262,6 +331,27 @@ def run_recon(
         elapsed_seconds=round(elapsed, 3),
         notices=notices,
     )
+
+
+# Strategy-kind bonus for re-ranking. Direct fits float to the top;
+# proxies and benign baselines sink. Cosmetic ordering only — every
+# strategy is still rendered.
+_KIND_BONUS = {
+    "direct_use": 0.20,
+    "subset_extraction": 0.10,
+    "label_remapping": 0.05,
+    "cross_class_repurposing": 0.0,
+    "signal_proxy": -0.05,
+    "benign_baseline": -0.10,
+    "not_useful": -1.0,
+}
+
+
+def _strategy_rank_key(sc: Scorecard) -> float:
+    best = sc.best_strategy
+    if best is None:
+        return -100.0
+    return best.confidence + _KIND_BONUS.get(best.kind.value, 0.0)
 
 
 __all__ = ["METADATA_ONLY_NOTICE", "Probe", "run_recon"]

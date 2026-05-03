@@ -54,6 +54,14 @@ def build_completion_kwargs(
     Routing: `model="azure/<deployment>"` with explicit `api_base`,
     `api_version`, and `azure_ad_token_provider`. Requires `ctx` to be
     AOAI-configured; the caller is responsible for that check.
+
+    `response_format` is the Pydantic class the caller will validate
+    the parsed JSON against. We pass `{"type": "json_object"}` to the
+    LLM (so Azure OpenAI nudges the model toward valid JSON without
+    rejecting the request on strict-schema quirks like `dict[str,
+    Literal[...]]`); the caller is expected to post-parse with
+    `MyModel.model_validate(json.loads(content))` and retry on
+    `ValidationError`.
     """
     if not ctx.aoai_configured:
         raise LLMError(
@@ -71,7 +79,12 @@ def build_completion_kwargs(
         "timeout": timeout_s,
     }
     if response_format is not None:
-        kwargs["response_format"] = response_format
+        # Use json_object mode rather than passing the Pydantic class as
+        # response_format=. Azure OpenAI's strict-schema validator
+        # rejects schemas that contain dict[str, Literal[...]] (the
+        # AssessorResponse case), and we already retry on Pydantic
+        # validation failure post-parse.
+        kwargs["response_format"] = {"type": "json_object"}
     return kwargs
 
 

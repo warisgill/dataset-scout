@@ -43,7 +43,8 @@ def render_recon_report(result: ReconResult) -> str:
     """Render a ReconResult to a Markdown string."""
     buf = StringIO()
     intent = result.intent
-    metadata_only = any("metadata-only mode" in n for n in result.notices)
+    metadata_only = any("Azure OpenAI is not configured" in n for n in result.notices)
+    llm_runtime_error = any("Azure OpenAI was configured but" in n for n in result.notices)
     has_strategies = _has_strategies(result)
     has_decomposition = bool(result.coverage and result.coverage.decomposition)
     notable_gaps = bool(result.coverage and len(result.coverage.semantic_gaps) >= 2)
@@ -56,6 +57,14 @@ def render_recon_report(result: ReconResult) -> str:
             "> assessment, and coverage gaps were skipped. To enable them,\n"
             "> copy `.env.example` to `.env`, set `AZURE_OPENAI_ENDPOINT`\n"
             "> and `AZURE_OPENAI_DEPLOYMENT`, and run `az login`.\n\n"
+        )
+    elif llm_runtime_error:
+        buf.write(
+            "> ⚠️ **LLM call failed — running in metadata-only mode.**  \n"
+            "> Azure OpenAI was configured but a call failed at runtime\n"
+            "> (deployment name, token, network, or quota — see notices\n"
+            "> below). Decomposition, strategy assessment, and coverage\n"
+            "> gaps were skipped.\n\n"
         )
     elif has_strategies:
         n_dirs = len(result.coverage.decomposition) if result.coverage else 0

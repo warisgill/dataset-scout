@@ -19,7 +19,6 @@ from dataset_scout import (
     StrategyKind,
 )
 from dataset_scout.strategy import (
-    AssessorResponse,
     assess_strategies,
     render_assessor_prompt,
 )
@@ -220,7 +219,7 @@ def test_assess_routes_via_azure_with_token_provider(
     assert "api_key" not in captured
 
     assert captured["timeout"] == 30.0
-    assert captured["response_format"] is AssessorResponse
+    assert captured["response_format"] == {"type": "json_object"}
     msgs = captured["messages"]
     assert msgs[0]["role"] == "user"
     assert "STRATEGIES" in msgs[0]["content"]

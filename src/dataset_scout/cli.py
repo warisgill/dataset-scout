@@ -113,6 +113,7 @@ def recon(
     from dataset_scout.context import ScoutContext
     from dataset_scout.errors import DatasetScoutError
     from dataset_scout.pipeline import run_recon
+    from dataset_scout.recipe_draft import write_recipe_draft
     from dataset_scout.render import write_recon_report, write_results_json
 
     overrides: dict[str, object] = {"min_strategy_confidence": min_strategy_confidence}
@@ -142,6 +143,7 @@ def recon(
 
     json_path = write_results_json(result, out)
     md_path = write_recon_report(result, out)
+    recipe_path = write_recipe_draft(result, out)
 
     err.print(
         f"[green]✔[/green] {len(result.candidates)} candidate(s) "
@@ -150,6 +152,8 @@ def recon(
     )
     err.print(f"  - results: {json_path}")
     err.print(f"  - report:  {md_path}")
+    if recipe_path is not None:
+        err.print(f"  - recipe:  {recipe_path}")
     if result.notices:
         for n in result.notices:
             err.print(f"  [yellow]![/yellow] {n}")

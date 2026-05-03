@@ -222,7 +222,11 @@ def decompose_intent(
         "api_version": ctx.aoai_api_version,
         "azure_ad_token_provider": token_provider,
         "messages": messages,
-        "response_format": DecomposeResponse,
+        # json_object mode rather than passing DecomposeResponse as the
+        # response_format (Azure OpenAI's strict schema validator
+        # rejects some Pydantic-generated schemas; we already retry on
+        # post-parse Pydantic validation failure).
+        "response_format": {"type": "json_object"},
         "timeout": timeout_s,
     }
 

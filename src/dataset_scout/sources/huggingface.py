@@ -173,16 +173,22 @@ def _build_search_query(intent: Intent) -> str:
     return intent.raw_brief.strip()
 
 
-def _direction_query(direction: DecompositionDirection) -> str:
-    """Build the HF lexical query for a decomposition direction.
+def _direction_queries(direction: DecompositionDirection) -> list[str]:
+    """Build per-keyword HF lexical queries for a decomposition direction.
 
-    Prefer the LLM-supplied keywords (the prompt instructs the model to
-    return short lexical terms). Fall back to the direction name with
-    underscores stripped.
+    The LLM returns 3-5 short keywords per direction. HF's `search=` is
+    a substring match — joining them all into one phrase returns very
+    few hits because no single dataset card contains every term in
+    sequence. So issue one query per keyword and let the pipeline
+    dedupe across them.
+
+    Capped at 3 keywords per direction; the first ones tend to be the
+    most specific. Falls back to the direction name when the LLM
+    returns no keywords.
     """
     if direction.keywords:
-        return " ".join(direction.keywords)
-    return direction.name.replace("_", " ")
+        return list(direction.keywords[:3])
+    return [direction.name.replace("_", " ")]
 
 
 class HuggingFaceSource:
@@ -221,12 +227,13 @@ class HuggingFaceSource:
         if original_query:
             yield from self._search_one(original_query, surfaced_by=[])
 
-        # Then each decomposition direction.
+        # Then each decomposition direction: one query per keyword (HF's
+        # lexical search needs short individual terms; concatenated
+        # phrases return very few hits).
         for direction in directions:
-            query = _direction_query(direction)
-            if not query:
-                continue
-            yield from self._search_one(query, surfaced_by=[direction.name])
+            for query in _direction_queries(direction):
+                if query:
+                    yield from self._search_one(query, surfaced_by=[direction.name])
 
     def _search_one(self, query: str, *, surfaced_by: list[str]) -> Iterator[Candidate]:
         infos = self._api.list_datasets(search=query, limit=self._limit, full=True)
