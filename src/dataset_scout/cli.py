@@ -1,7 +1,7 @@
 """dataset-scout CLI — thin shell over the library.
 
-Two equivalent entry points: `dataset-scout` and `dscout`. Same command
-tree (see `TECH_DESIGN.md` §14). M0 ships the verb skeletons; later
+Two equivalent entry points: `dataset-scout` and `datascout`. Same
+command tree (see [docs/cli.md]). M0 ships the verb skeletons; later
 milestones light up real work behind each.
 """
 
@@ -88,7 +88,9 @@ def recon(
     min_strategy_confidence: Annotated[
         float, typer.Option("--min-strategy-confidence", min=0.0, max=1.0)
     ] = 0.5,
-    out: Annotated[Path, typer.Option("--out", help="Output directory.")] = Path("dscout-out"),
+    out: Annotated[Path, typer.Option("--out", help="Output directory.")] = Path(
+        "datascout-out"
+    ),
     # Hidden expert escape hatches — not in --help. Useful for debugging
     # and forward compatibility; production users should let the brief +
     # decomposer carry the signal.

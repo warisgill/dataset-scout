@@ -21,7 +21,7 @@ coverage.xml
 uv.lock.tmp
 
 # Local
-dscout-out/
+datascout-out/
 mycorpus/
 *.local.*
 .env

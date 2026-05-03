@@ -1,11 +1,10 @@
 # CLI reference
 
-Three equivalent entry points. Pick whichever you prefer:
+Two equivalent entry points. Pick whichever you prefer:
 
 ```bash
 dataset-scout ...      # formal
 datascout      ...     # recommended short form
-dscout         ...     # legacy alias (kept for compatibility)
 ```
 
 All commands route to the same library functions. The CLI is a thin
@@ -38,7 +37,7 @@ datascout recon "<brief>" [options]
 | `--language TEXT` | `en` | Required language(s); repeat for multiple. |
 | `--license TEXT` | permissive set | License allowlist; repeat for multiple. |
 | `--min-strategy-confidence FLOAT` | `0.5` | (M2b) Strategies below this confidence are filtered from the draft recipe. |
-| `--out PATH` | `dscout-out/` | Output directory. |
+| `--out PATH` | `datascout-out/` | Output directory. |
 
 ### Outputs
 

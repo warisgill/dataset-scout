@@ -91,7 +91,7 @@ once it lands.
 |---|---|---|---|
 | `DATASET_SCOUT_CACHE_DIR` | SQLite cache (M1b) | `~/.cache/dataset-scout/` | `%LOCALAPPDATA%\dataset-scout\cache\` |
 | `DATASET_SCOUT_CONFIG_DIR` | Config TOML | `~/.config/dataset-scout/` | `%APPDATA%\dataset-scout\` |
-| `DATASET_SCOUT_OUT_DIR` | Default `--out` for `recon` | `./dscout-out/` | `.\dscout-out\` |
+| `DATASET_SCOUT_OUT_DIR` | Default `--out` for `recon` | `./datascout-out/` | `.\datascout-out\` |
 
 XDG variables (`XDG_CACHE_HOME`, `XDG_CONFIG_HOME`) are honored on
 Unix when the explicit overrides aren't set.

@@ -67,7 +67,7 @@ class ScoutContext(BaseModel):
 
     cache_dir: Path = Field(default_factory=_default_cache_dir)
     config_dir: Path = Field(default_factory=_default_config_dir)
-    out_dir: Path = Field(default_factory=lambda: Path("dscout-out"))
+    out_dir: Path = Field(default_factory=lambda: Path("datascout-out"))
 
     sources: Mapping[str, SourceConfig] = Field(
         default_factory=lambda: {

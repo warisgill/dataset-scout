@@ -25,7 +25,7 @@ echo "AZURE_OPENAI_ENDPOINT=https://my-aoai.openai.azure.com" > .env
 echo "AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini" >> .env
 
 datascout recon "find labeled prompt injection corpora for a RAG app"
-# → dscout-out/{report.md, results.json, recipe.draft.yaml}
+# → datascout-out/{report.md, results.json, recipe.draft.yaml}
 ```
 
 ---
@@ -50,9 +50,9 @@ When you run `datascout recon "<brief>"`:
    bucket, declared languages, card-completeness. Each emits a
    `SubScore` with explicit evidence — no aggregate "quality score."
 5. **Discovery report + structured results.**
-   `dscout-out/report.md` lists candidates in source-relevance order
+   `datascout-out/report.md` lists candidates in source-relevance order
    with badges, surfacing-direction annotations, and per-probe
-   evidence tables. `dscout-out/results.json` is the same data as
+   evidence tables. `datascout-out/results.json` is the same data as
    pure JSON for downstream tooling.
 
 When AOAI isn't configured the tool **degrades cleanly** to
@@ -113,8 +113,8 @@ See [`docs/architecture.md`](docs/architecture.md) for the full picture.
 
 ## Install
 
-Three equivalent CLI entry points: `dataset-scout` (formal),
-`datascout` (recommended short form), `dscout` (legacy alias).
+Two equivalent CLI entry points: `dataset-scout` (formal) and
+`datascout` (recommended short form).
 
 ```bash
 # As a one-off:
