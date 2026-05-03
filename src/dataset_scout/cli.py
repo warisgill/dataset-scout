@@ -88,9 +88,7 @@ def recon(
     min_strategy_confidence: Annotated[
         float, typer.Option("--min-strategy-confidence", min=0.0, max=1.0)
     ] = 0.5,
-    out: Annotated[Path, typer.Option("--out", help="Output directory.")] = Path(
-        "datascout-out"
-    ),
+    out: Annotated[Path, typer.Option("--out", help="Output directory.")] = Path("datascout-out"),
     # Hidden expert escape hatches — not in --help. Useful for debugging
     # and forward compatibility; production users should let the brief +
     # decomposer carry the signal.

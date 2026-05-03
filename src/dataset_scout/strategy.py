@@ -1,0 +1,267 @@
+"""LLM-driven per-candidate strategy assessment (Azure OpenAI + Entra).
+
+Given a `Candidate` and the user's `Intent`, ask the configured Azure
+OpenAI deployment for 1-4 ranked strategies for using the candidate
+(direct use, subset extraction, label remapping, cross-class
+repurposing, signal proxy, benign baseline, or "not useful"). The
+pipeline calls this once per shortlisted candidate; failures fall back
+to skipping assessment for that candidate (the pipeline catches the
+`LLMError`).
+
+Composition pairing (`composes_with`) is a portfolio-level decision
+made elsewhere; the prompt explicitly forbids `composition_only` here
+and any such strategy that slips through is dropped with a logged
+warning.
+
+Network-free at import time. AOAI plumbing (litellm, azure-identity)
+lives in `dataset_scout.llm_client` and is imported lazily.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import TYPE_CHECKING, Any
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from dataset_scout.core import Candidate, Intent, Strategy, StrategyKind, TransformSpec
+from dataset_scout.errors import LLMError
+from dataset_scout.llm_client import build_completion_kwargs, extract_content, import_litellm
+
+if TYPE_CHECKING:
+    from dataset_scout.context import ScoutContext
+
+# Bumped when prompt or response handling changes in a way that would
+# invalidate cached assessments.
+ASSESSOR_VERSION = "1"
+
+# Mirrors the prompt's hard cap.
+_MAX_STRATEGIES = 4
+
+_log = logging.getLogger(__name__)
+
+
+# ─── response model ─────────────────────────────────────────────────
+
+
+class _StrategyEntry(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    kind: StrategyKind
+    confidence: float = Field(ge=0.0, le=1.0)
+    rationale: str
+    caveats: list[str] = Field(default_factory=list)
+    transform: TransformSpec
+
+
+class AssessorResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    strategies: list[_StrategyEntry]
+
+
+# ─── prompt rendering ───────────────────────────────────────────────
+
+
+# The literal JSON-schema block contains `{` and `}`, so we use the
+# same sentinel-replacement pattern as `decompose.py` rather than
+# str.format / f-strings.
+_PROMPT_TEMPLATE = """\
+You are helping an AI security engineer assess whether a public
+dataset is useful for their detection task. Their goal is described
+below. The candidate dataset's metadata is provided.
+
+USER INTENT
+-----------
+Brief: <<RAW_BRIEF>>
+Detection target: <<DETECTION_TARGET>>
+Threat families: <<THREAT_FAMILIES>>
+Deployment context: <<DEPLOYMENT_CONTEXT>>
+
+CANDIDATE DATASET
+-----------------
+Source: <<SOURCE>>
+Id: <<CANDIDATE_ID>>
+Card URL: <<CARD_URL>>
+Description: <<DESCRIPTION>>
+License (raw / SPDX guess): <<LICENSE_RAW>> / <<LICENSE_SPDX>>
+Declared languages: <<LANGUAGES>>
+Declared task categories: <<TASK_CATEGORIES>>
+Tags: <<TAGS>>
+Surfaced by direction(s): <<SURFACED_BY>>
+
+YOUR TASK
+---------
+For this candidate, produce a ranked list of plausible STRATEGIES
+for using it in the user's task. Use only the strategy kinds below;
+do not invent new ones. Be conservative-but-creative: stretches get
+low confidence. Include at most 4 strategies; return fewer if fewer
+plausibly apply. If the candidate is genuinely not useful, return a
+single strategy with kind = "not_useful" and explain why.
+
+DO NOT use the kind "composition_only" — composition is a
+portfolio-level decision evaluated separately from per-candidate
+strategy assessment. Stick to the seven kinds below.
+
+Strategy kinds:
+  - direct_use:               labels and content map cleanly
+  - subset_extraction:        only some rows are relevant; filter to subset
+  - label_remapping:          same data, different label semantics
+  - cross_class_repurposing:  positives -> hard-negatives, etc.
+  - signal_proxy:             adjacent threat as proxy positive
+  - benign_baseline:          no relevant positives, useful as benign
+  - not_useful:               nothing relevant
+
+Return JSON matching this schema:
+{
+  "strategies": [
+    {
+      "kind": "...",
+      "confidence": 0.0-1.0,
+      "rationale": "1-3 sentences",
+      "caveats": ["...", "..."],
+      "transform": {
+        "text_column": "string or null",
+        "label_column": "string or null",
+        "label_value_map": {"src_value": "positive"|"benign"|"hard_negative", ...},
+        "label_kind_map":  {"src_value": "ground_truth"|"remapped"|"proxy"|"subset_extracted", ...},
+        "filter": "string or null",
+        "take": int or "all"
+      }
+    },
+    ...
+  ]
+}
+"""
+
+
+def _none_or_csv(values: list[str]) -> str:
+    return ", ".join(values) if values else "(none)"
+
+
+def _none_or_str(value: str | None) -> str:
+    return value if value else "(none)"
+
+
+def render_assessor_prompt(candidate: Candidate, intent: Intent) -> str:
+    """Render the exact prompt sent to the model. Pure; no I/O.
+
+    Empty / None fields render as ``(none)`` so the prompt stays
+    well-formed and snapshot-stable across candidates.
+    """
+    md = candidate.metadata
+    return (
+        _PROMPT_TEMPLATE.replace("<<RAW_BRIEF>>", _none_or_str(intent.raw_brief))
+        .replace("<<DETECTION_TARGET>>", _none_or_str(intent.detection_target))
+        .replace("<<THREAT_FAMILIES>>", _none_or_csv(intent.threat_families))
+        .replace("<<DEPLOYMENT_CONTEXT>>", _none_or_str(intent.deployment_context))
+        .replace("<<SOURCE>>", _none_or_str(candidate.source))
+        .replace("<<CANDIDATE_ID>>", _none_or_str(candidate.id))
+        .replace("<<CARD_URL>>", _none_or_str(md.card_url))
+        .replace("<<DESCRIPTION>>", _none_or_str(md.description))
+        .replace("<<LICENSE_RAW>>", _none_or_str(md.license_raw))
+        .replace("<<LICENSE_SPDX>>", _none_or_str(md.license_spdx))
+        .replace("<<LANGUAGES>>", _none_or_csv(md.languages_declared))
+        .replace("<<TASK_CATEGORIES>>", _none_or_csv(md.task_categories))
+        .replace("<<TAGS>>", _none_or_csv(md.tags))
+        .replace("<<SURFACED_BY>>", _none_or_csv(candidate.surfaced_by))
+    )
+
+
+# ─── parsing ────────────────────────────────────────────────────────
+
+
+def _parse_response(content: str) -> AssessorResponse:
+    """Parse and validate. Raises ValidationError on schema mismatch,
+    json.JSONDecodeError on malformed JSON; both are retryable."""
+    payload = json.loads(content)
+    return AssessorResponse.model_validate(payload)
+
+
+def _to_strategy(entry: _StrategyEntry) -> Strategy:
+    return Strategy(
+        kind=entry.kind,
+        confidence=entry.confidence,
+        rationale=entry.rationale,
+        caveats=list(entry.caveats),
+        transform=entry.transform,
+        composes_with=[],
+    )
+
+
+# ─── assess_strategies ─────────────────────────────────────────────
+
+
+def assess_strategies(
+    candidate: Candidate,
+    intent: Intent,
+    *,
+    ctx: ScoutContext,
+    timeout_s: float = 30.0,
+) -> list[Strategy]:
+    """Ask the AOAI deployment for 1-4 ranked strategies for a candidate.
+
+    Single completion call; one retry on Pydantic validation failure
+    using the same prompt. Any other failure (network, missing AOAI
+    config, no Entra creds, repeated validation failure) raises
+    `LLMError` so the pipeline can skip assessment for this candidate.
+
+    `composition_only` strategies are dropped with a logged warning —
+    composition is decided at portfolio level, not per candidate.
+
+    Returns strategies sorted by confidence descending. Capped at 4.
+    """
+    if not ctx.aoai_configured:
+        raise LLMError(
+            "Azure OpenAI is not configured. Set AZURE_OPENAI_ENDPOINT "
+            "and AZURE_OPENAI_DEPLOYMENT (and run `az login` for Entra "
+            "auth)."
+        )
+
+    litellm = import_litellm()
+
+    prompt = render_assessor_prompt(candidate, intent)
+    messages: list[dict[str, str]] = [{"role": "user", "content": prompt}]
+    completion_kwargs: dict[str, Any] = build_completion_kwargs(
+        ctx,
+        messages=messages,
+        response_format=AssessorResponse,
+        timeout_s=timeout_s,
+    )
+
+    last_parse_error: Exception | None = None
+    parsed: AssessorResponse | None = None
+    for _attempt in range(2):
+        try:
+            response = litellm.completion(**completion_kwargs)
+        except Exception as exc:
+            raise LLMError(f"LLM call failed: {exc}") from exc
+
+        content = extract_content(response)
+        try:
+            parsed = _parse_response(content)
+            break
+        except (ValidationError, json.JSONDecodeError) as exc:
+            last_parse_error = exc
+            parsed = None
+            continue
+
+    if parsed is None:
+        msg = f"LLM returned invalid JSON twice: {last_parse_error}"
+        raise LLMError(msg) from last_parse_error
+
+    kept: list[_StrategyEntry] = []
+    for entry in parsed.strategies:
+        if entry.kind is StrategyKind.COMPOSITION_ONLY:
+            _log.warning(
+                "dropping composition_only strategy from assessor response "
+                "(candidate=%s/%s); composition is portfolio-level",
+                candidate.source,
+                candidate.id,
+            )
+            continue
+        kept.append(entry)
+
+    kept.sort(key=lambda e: e.confidence, reverse=True)
+    return [_to_strategy(e) for e in kept[:_MAX_STRATEGIES]]

@@ -1,0 +1,65 @@
+You are helping an AI security engineer assess whether a public
+dataset is useful for their detection task. Their goal is described
+below. The candidate dataset's metadata is provided.
+
+USER INTENT
+-----------
+Brief: find prompt injection corpora
+Detection target: prompt injection
+Threat families: prompt_injection, indirect_injection
+Deployment context: rag_pipeline
+
+CANDIDATE DATASET
+-----------------
+Source: huggingface
+Id: acme/pi-corpus
+Card URL: https://huggingface.co/datasets/acme/pi-corpus
+Description: A corpus of prompt-injection examples.
+License (raw / SPDX guess): apache-2.0 / Apache-2.0
+Declared languages: en
+Declared task categories: text-classification
+Tags: prompt-injection, security
+Surfaced by direction(s): prompt_injection_core, indirect_injection
+
+YOUR TASK
+---------
+For this candidate, produce a ranked list of plausible STRATEGIES
+for using it in the user's task. Use only the strategy kinds below;
+do not invent new ones. Be conservative-but-creative: stretches get
+low confidence. Include at most 4 strategies; return fewer if fewer
+plausibly apply. If the candidate is genuinely not useful, return a
+single strategy with kind = "not_useful" and explain why.
+
+DO NOT use the kind "composition_only" — composition is a
+portfolio-level decision evaluated separately from per-candidate
+strategy assessment. Stick to the seven kinds below.
+
+Strategy kinds:
+  - direct_use:               labels and content map cleanly
+  - subset_extraction:        only some rows are relevant; filter to subset
+  - label_remapping:          same data, different label semantics
+  - cross_class_repurposing:  positives -> hard-negatives, etc.
+  - signal_proxy:             adjacent threat as proxy positive
+  - benign_baseline:          no relevant positives, useful as benign
+  - not_useful:               nothing relevant
+
+Return JSON matching this schema:
+{
+  "strategies": [
+    {
+      "kind": "...",
+      "confidence": 0.0-1.0,
+      "rationale": "1-3 sentences",
+      "caveats": ["...", "..."],
+      "transform": {
+        "text_column": "string or null",
+        "label_column": "string or null",
+        "label_value_map": {"src_value": "positive"|"benign"|"hard_negative", ...},
+        "label_kind_map":  {"src_value": "ground_truth"|"remapped"|"proxy"|"subset_extracted", ...},
+        "filter": "string or null",
+        "take": int or "all"
+      }
+    },
+    ...
+  ]
+}

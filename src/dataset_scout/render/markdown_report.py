@@ -1,8 +1,15 @@
 """Markdown report renderer.
 
-Discovery-slice framing: explicit "pre-fit metadata screening" header,
-no ranking language. Per-candidate annotations come from the cheap
-probes; everything links back to a card URL.
+Three framings depending on what ran:
+
+- **Metadata-only.** No LLM configured. Discovery-only language.
+- **Discovery + decomposition.** LLM ran the decomposer; candidates
+  surfaced from multiple directions but no per-candidate strategies.
+- **Strategy-assessed.** Per-candidate strategies + (optional)
+  coverage gaps. Report leads with the strongest fits.
+
+Receipts everywhere — every claim links back to a card URL or
+specific evidence.
 """
 
 from __future__ import annotations
@@ -14,6 +21,8 @@ from dataset_scout.core import (
     Evidence,
     ReconResult,
     Scorecard,
+    Strategy,
+    StrategyKind,
     SubScore,
 )
 
@@ -26,11 +35,18 @@ def write_recon_report(result: ReconResult, out_dir: Path) -> Path:
     return target
 
 
+def _has_strategies(result: ReconResult) -> bool:
+    return any(sc.strategies for sc in result.candidates)
+
+
 def render_recon_report(result: ReconResult) -> str:
     """Render a ReconResult to a Markdown string."""
     buf = StringIO()
     intent = result.intent
     metadata_only = any("metadata-only mode" in n for n in result.notices)
+    has_strategies = _has_strategies(result)
+    has_decomposition = bool(result.coverage and result.coverage.decomposition)
+    notable_gaps = bool(result.coverage and len(result.coverage.semantic_gaps) >= 2)
 
     buf.write("# dataset-scout recon report\n\n")
     if metadata_only:
@@ -41,13 +57,22 @@ def render_recon_report(result: ReconResult) -> str:
             "> copy `.env.example` to `.env`, set `AZURE_OPENAI_ENDPOINT`\n"
             "> and `AZURE_OPENAI_DEPLOYMENT`, and run `az login`.\n\n"
         )
-    elif result.coverage and result.coverage.decomposition:
+    elif has_strategies:
+        n_dirs = len(result.coverage.decomposition) if result.coverage else 0
+        buf.write(
+            "> **Strategy-assessed.**  \n"
+            "> Search expanded across the original brief and "
+            f"{n_dirs} related direction(s); shortlisted candidates were "
+            "assessed for direct fits and reframings. Listed here in\n"
+            "> best-strategy order; review the strategy + caveats before "
+            "committing.\n\n"
+        )
+    elif has_decomposition and result.coverage is not None:
         buf.write(
             "> **Discovery + decomposition.**  \n"
             "> Search expanded across the original brief and "
             f"{len(result.coverage.decomposition)} related direction(s) "
-            "proposed by the LLM. Strategy assessment + coverage gaps land\n"
-            "> in a follow-up milestone.\n\n"
+            "proposed by the LLM.\n\n"
         )
     else:
         buf.write(
@@ -64,8 +89,19 @@ def render_recon_report(result: ReconResult) -> str:
         buf.write(f"**Threat families:** {', '.join(intent.threat_families)}\n\n")
     buf.write(f"**Languages requested:** {', '.join(intent.languages)}\n\n")
 
+    # ─── Coverage gaps (lead when notable) ─────────────────────
+    if notable_gaps and result.coverage:
+        buf.write("## Coverage gaps\n\n")
+        buf.write(
+            "The candidates above don't fully cover what you described. Concrete next steps:\n\n"
+        )
+        for gap in result.coverage.semantic_gaps:
+            buf.write(f"- **{gap.aspect}** — {gap.description}\n")
+            buf.write(f"  - *Suggestion:* {gap.suggestion}\n")
+        buf.write("\n")
+
     # ─── Decomposition audit ────────────────────────────────────
-    if result.coverage and result.coverage.decomposition:
+    if has_decomposition and result.coverage:
         buf.write("## Decomposition\n\n")
         buf.write("The LLM proposed these search directions in addition to the original brief:\n\n")
         for d in result.coverage.decomposition:
@@ -80,6 +116,9 @@ def render_recon_report(result: ReconResult) -> str:
     buf.write("## Run summary\n\n")
     buf.write(f"- Sources searched: {', '.join(result.sources_searched) or '(none)'}\n")
     buf.write(f"- Candidates returned: **{len(result.candidates)}**\n")
+    if has_strategies:
+        assessed = sum(1 for sc in result.candidates if sc.strategies)
+        buf.write(f"- Strategy-assessed: **{assessed}**\n")
     buf.write(f"- Wall-clock: {result.elapsed_seconds:.2f}s\n")
     buf.write(f"- dataset-scout version: {result.scout_version}\n")
     if result.notices:
@@ -92,11 +131,22 @@ def render_recon_report(result: ReconResult) -> str:
         buf.write("No candidates were returned. Try broadening the brief.\n")
         return buf.getvalue()
 
+    # ─── Coverage gaps (non-leading; below candidates section) ──
+    # When gaps aren't notable, we render them below candidates instead
+    # of leading with them.
+
     buf.write("## Candidates\n\n")
-    if result.coverage and result.coverage.decomposition:
+    if has_strategies:
         buf.write(
-            "Listed in search-relevance order, deduped across the original "
-            "brief and decomposition directions. The `surfaced by` annotation\n"
+            "Listed in **best-strategy order.** Each candidate's "
+            "primary strategy and confidence are shown; review caveats\n"
+            "before committing.\n\n"
+        )
+    elif has_decomposition:
+        buf.write(
+            "Listed in search-relevance order, deduped across the "
+            "original brief and decomposition directions. The "
+            "`surfaced by` annotation\n"
             "on each candidate shows which direction(s) found it.\n\n"
         )
     else:
@@ -107,6 +157,14 @@ def render_recon_report(result: ReconResult) -> str:
         )
     for i, sc in enumerate(result.candidates, start=1):
         _render_candidate(buf, i, sc)
+
+    if result.coverage and result.coverage.semantic_gaps and not notable_gaps:
+        buf.write("## Coverage gaps\n\n")
+        buf.write("Aspects worth augmenting:\n\n")
+        for gap in result.coverage.semantic_gaps:
+            buf.write(f"- **{gap.aspect}** — {gap.description}\n")
+            buf.write(f"  - *Suggestion:* {gap.suggestion}\n")
+        buf.write("\n")
 
     buf.write("\n---\n\n")
     buf.write(
@@ -140,9 +198,51 @@ def _render_candidate(buf: StringIO, index: int, sc: Scorecard) -> None:
     if cand.requires_auth:
         buf.write("- 🔒 **Access:** gated / requires authentication\n")
 
+    if sc.strategies:
+        _render_strategies(buf, sc.strategies)
+
     buf.write("\n")
     _render_probe_signals(buf, sc)
     buf.write("\n")
+
+
+def _strategy_badge(kind: StrategyKind) -> str:
+    return {
+        StrategyKind.DIRECT_USE: "✅ direct use",
+        StrategyKind.SUBSET_EXTRACTION: "🔎 subset extraction",
+        StrategyKind.LABEL_REMAPPING: "🔁 label remapping",
+        StrategyKind.CROSS_CLASS_REPURPOSING: "🔀 cross-class repurposing",
+        StrategyKind.SIGNAL_PROXY: "📡 signal proxy",
+        StrategyKind.BENIGN_BASELINE: "🧊 benign baseline",
+        StrategyKind.COMPOSITION_ONLY: "🧩 composition-only",
+        StrategyKind.NOT_USEFUL: "❌ not useful",
+    }.get(kind, kind.value)
+
+
+def _render_strategies(buf: StringIO, strategies: list[Strategy]) -> None:
+    buf.write("\n**Strategies:**\n\n")
+    for s in strategies:
+        badge = _strategy_badge(s.kind)
+        buf.write(f"- {badge} — confidence {s.confidence:.2f}  \n  {s.rationale}\n")
+        if s.caveats:
+            for cav in s.caveats:
+                buf.write(f"  - ⚠ {cav}\n")
+        t = s.transform
+        transform_bits: list[str] = []
+        if t.text_column:
+            transform_bits.append(f"text=`{t.text_column}`")
+        if t.label_column:
+            transform_bits.append(f"label=`{t.label_column}`")
+        if t.label_value_map:
+            transform_bits.append(
+                "values={" + ", ".join(f"`{k}`→{v}" for k, v in t.label_value_map.items()) + "}"
+            )
+        if t.filter:
+            transform_bits.append(f"filter=`{t.filter}`")
+        if t.take != "all":
+            transform_bits.append(f"take={t.take}")
+        if transform_bits:
+            buf.write("  - transform: " + " · ".join(transform_bits) + "\n")
 
 
 def _render_badges(sc: Scorecard) -> list[str]:
