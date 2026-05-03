@@ -19,10 +19,20 @@ Early development. Not yet released.
 
 ## Configure
 
-Copy `.env.example` to `.env` and fill in any keys you need. The CLI
-auto-loads `.env` from the current working directory at startup. A HF
-token isn't strictly required for public datasets, but it raises rate
-limits and is the friendlier default.
+dataset-scout uses Azure OpenAI (Entra auth) for the LLM steps
+(decomposition, strategy assessment, coverage). Local dev:
+
+```bash
+az login
+cp .env.example .env   # set AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_DEPLOYMENT
+```
+
+The CLI auto-loads `.env` from the current working directory at
+startup. With nothing configured the tool runs in metadata-only mode
+(HuggingFace search + cheap probes only) and tells you what to set.
+
+A HuggingFace token isn't strictly required for public datasets but
+raises rate limits.
 
 ## Install (development)
 

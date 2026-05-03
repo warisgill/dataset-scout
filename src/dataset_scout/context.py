@@ -55,6 +55,12 @@ class ScoutContext(BaseModel):
 
     Construct via `ScoutContext.from_env()` for normal use, or build one
     directly in tests / API callers.
+
+    Azure OpenAI + Entra is the LLM auth model: callers configure the
+    AOAI endpoint and deployment via env vars (or directly), and the
+    bearer token is acquired lazily via `DefaultAzureCredential` (which
+    chains `az login`, managed identity, env-var service-principal,
+    etc.). No API keys are stored in `ScoutContext` for the LLM path.
     """
 
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True, extra="forbid")
@@ -71,9 +77,14 @@ class ScoutContext(BaseModel):
         }
     )
 
+    # Source-specific tokens (HF, Kaggle). LLM auth is Entra, not API
+    # keys, and lives in the AOAI fields below.
     api_keys: Mapping[str, str] = Field(default_factory=dict)
 
-    llm_model: str = "gpt-4o-mini"
+    # ─── Azure OpenAI ────────────────────────────────────────────
+    aoai_endpoint: str | None = None
+    aoai_deployment: str | None = None
+    aoai_api_version: str = "2024-10-21"
 
     is_tty: bool = False
 
@@ -90,15 +101,16 @@ class ScoutContext(BaseModel):
             DATASET_SCOUT_CACHE_DIR
             DATASET_SCOUT_CONFIG_DIR
             DATASET_SCOUT_OUT_DIR
-            DATASET_SCOUT_LLM_MODEL
             HUGGINGFACE_HUB_TOKEN / HF_TOKEN
-            OPENAI_API_KEY, ANTHROPIC_API_KEY, ... (forwarded to litellm)
+            KAGGLE_USERNAME / KAGGLE_KEY
+
+            AZURE_OPENAI_ENDPOINT       — e.g. https://my-aoai.openai.azure.com/
+            AZURE_OPENAI_DEPLOYMENT     — deployment name (e.g. gpt-4o-mini)
+            AZURE_OPENAI_API_VERSION    — overrides default
         """
         e = env if env is not None else os.environ
         api_keys: dict[str, str] = {}
         for k in (
-            "OPENAI_API_KEY",
-            "ANTHROPIC_API_KEY",
             "HUGGINGFACE_HUB_TOKEN",
             "HF_TOKEN",
             "KAGGLE_USERNAME",
@@ -114,8 +126,12 @@ class ScoutContext(BaseModel):
             kwargs["config_dir"] = Path(v)
         if v := e.get("DATASET_SCOUT_OUT_DIR"):
             kwargs["out_dir"] = Path(v)
-        if v := e.get("DATASET_SCOUT_LLM_MODEL"):
-            kwargs["llm_model"] = v
+        if v := e.get("AZURE_OPENAI_ENDPOINT"):
+            kwargs["aoai_endpoint"] = v.rstrip("/")
+        if v := e.get("AZURE_OPENAI_DEPLOYMENT"):
+            kwargs["aoai_deployment"] = v
+        if v := e.get("AZURE_OPENAI_API_VERSION"):
+            kwargs["aoai_api_version"] = v
         if is_tty is not None:
             kwargs["is_tty"] = is_tty
 
@@ -124,3 +140,13 @@ class ScoutContext(BaseModel):
     def enabled_sources(self) -> Iterable[str]:
         """Names of enabled sources, in stable order."""
         return [name for name, cfg in self.sources.items() if cfg.enabled]
+
+    @property
+    def aoai_configured(self) -> bool:
+        """True iff endpoint + deployment are present.
+
+        Bearer-token availability (e.g., `az login` having been run) is
+        checked lazily by the LLM call site — it requires a network
+        round-trip we don't want to pay here.
+        """
+        return bool(self.aoai_endpoint) and bool(self.aoai_deployment)

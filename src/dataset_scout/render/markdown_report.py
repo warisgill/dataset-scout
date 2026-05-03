@@ -36,9 +36,10 @@ def render_recon_report(result: ReconResult) -> str:
     if metadata_only:
         buf.write(
             "> ⚠️ **Metadata-only mode.**  \n"
-            "> No LLM provider is configured, so decomposition, strategy\n"
+            "> Azure OpenAI is not configured, so decomposition, strategy\n"
             "> assessment, and coverage gaps were skipped. To enable them,\n"
-            "> copy `.env.example` to `.env` and set an LLM API key.\n\n"
+            "> copy `.env.example` to `.env`, set `AZURE_OPENAI_ENDPOINT`\n"
+            "> and `AZURE_OPENAI_DEPLOYMENT`, and run `az login`.\n\n"
         )
     elif result.coverage and result.coverage.decomposition:
         buf.write(

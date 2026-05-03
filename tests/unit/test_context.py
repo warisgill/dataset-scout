@@ -30,16 +30,19 @@ def test_enabled_sources_filters():
 
 
 def test_from_env_picks_up_api_keys():
+    """Source-specific tokens are captured; LLM auth is not API-key based."""
     ctx = ScoutContext.from_env(
         env={
-            "OPENAI_API_KEY": "sk-test",
             "HUGGINGFACE_HUB_TOKEN": "hf_test",
+            "KAGGLE_KEY": "kg_test",
             "UNRELATED_VAR": "ignored",
         }
     )
-    assert ctx.api_keys.get("OPENAI_API_KEY") == "sk-test"
     assert ctx.api_keys.get("HUGGINGFACE_HUB_TOKEN") == "hf_test"
+    assert ctx.api_keys.get("KAGGLE_KEY") == "kg_test"
     assert "UNRELATED_VAR" not in ctx.api_keys
+    # OPENAI/ANTHROPIC keys are no longer captured — Entra is the LLM auth.
+    assert "OPENAI_API_KEY" not in ctx.api_keys
 
 
 def test_from_env_overrides_paths(tmp_path):
@@ -47,12 +50,38 @@ def test_from_env_overrides_paths(tmp_path):
         env={
             "DATASET_SCOUT_CACHE_DIR": str(tmp_path / "c"),
             "DATASET_SCOUT_OUT_DIR": str(tmp_path / "o"),
-            "DATASET_SCOUT_LLM_MODEL": "claude-haiku",
         }
     )
     assert ctx.cache_dir == tmp_path / "c"
     assert ctx.out_dir == tmp_path / "o"
-    assert ctx.llm_model == "claude-haiku"
+
+
+def test_from_env_picks_up_aoai_config():
+    ctx = ScoutContext.from_env(
+        env={
+            "AZURE_OPENAI_ENDPOINT": "https://my-aoai.openai.azure.com/",
+            "AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini",
+            "AZURE_OPENAI_API_VERSION": "2024-08-01-preview",
+        }
+    )
+    # Trailing slash trimmed for consistency with litellm's api_base.
+    assert ctx.aoai_endpoint == "https://my-aoai.openai.azure.com"
+    assert ctx.aoai_deployment == "gpt-4o-mini"
+    assert ctx.aoai_api_version == "2024-08-01-preview"
+    assert ctx.aoai_configured is True
+
+
+def test_aoai_configured_requires_both_fields():
+    assert ScoutContext().aoai_configured is False
+    assert ScoutContext(aoai_endpoint="https://x.openai.azure.com").aoai_configured is False
+    assert ScoutContext(aoai_deployment="gpt-4o-mini").aoai_configured is False
+    assert (
+        ScoutContext(
+            aoai_endpoint="https://x.openai.azure.com",
+            aoai_deployment="gpt-4o-mini",
+        ).aoai_configured
+        is True
+    )
 
 
 def test_context_is_frozen():
@@ -60,4 +89,4 @@ def test_context_is_frozen():
 
     ctx = ScoutContext.from_env(env={})
     with pytest.raises(pydantic.ValidationError):
-        ctx.llm_model = "other"  # type: ignore[misc]
+        ctx.aoai_endpoint = "https://other.openai.azure.com"  # type: ignore[misc]

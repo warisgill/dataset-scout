@@ -1,4 +1,4 @@
-"""Unit tests for the LLM decomposition module (M2a)."""
+"""Unit tests for the LLM decomposition module (Azure OpenAI + Entra)."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ from dataset_scout.decompose import (
 pytestmark = pytest.mark.unit
 
 
-# ─── fakes for litellm ──────────────────────────────────────────────
+# ─── fakes for litellm + azure-identity ─────────────────────────────
 
 
 @dataclass
@@ -44,7 +44,6 @@ class _Resp:
 
 
 def _resp(payload: Any) -> _Resp:
-    """Build a fake OpenAI-shape completion response carrying a JSON payload."""
     return _Resp(choices=[_Choice(message=_Msg(content=json.dumps(payload)))])
 
 
@@ -61,6 +60,30 @@ def _good_directions(n: int = 3) -> list[dict[str, Any]]:
     ]
 
 
+@pytest.fixture
+def fake_token_provider(monkeypatch: pytest.MonkeyPatch):
+    """Replace `_make_token_provider` with a stub so tests don't touch
+    real Azure credentials."""
+
+    def _stub() -> object:
+        return lambda: "fake-bearer-token"
+
+    monkeypatch.setattr("dataset_scout.decompose._make_token_provider", _stub)
+
+
+def _ctx(
+    *,
+    endpoint: str = "https://example.openai.azure.com",
+    deployment: str = "gpt-4o-mini",
+    api_version: str = "2024-10-21",
+) -> ScoutContext:
+    return ScoutContext(
+        aoai_endpoint=endpoint,
+        aoai_deployment=deployment,
+        aoai_api_version=api_version,
+    )
+
+
 # ─── render_decompose_prompt ────────────────────────────────────────
 
 
@@ -74,7 +97,6 @@ def test_render_returns_nonempty_with_key_phrases() -> None:
 
 def test_render_renders_none_for_empty_fields() -> None:
     p = render_decompose_prompt(Intent(raw_brief=""))
-    # raw_brief, detection_target, threat_families, deployment_context all default → (none)
     assert "Brief: (none)" in p
     assert "Detection target: (none)" in p
     assert "Threat families: (none)" in p
@@ -118,14 +140,34 @@ def test_render_snapshot_stable() -> None:
     )
 
 
-# ─── decompose_intent ───────────────────────────────────────────────
+# ─── llm_available ──────────────────────────────────────────────────
 
 
-def _ctx(api_keys: dict[str, str] | None = None, model: str = "gpt-4o-mini") -> ScoutContext:
-    return ScoutContext(api_keys=api_keys or {}, llm_model=model)
+def test_llm_available_false_when_unconfigured() -> None:
+    ctx = ScoutContext()
+    assert llm_available(ctx) is False
 
 
-def test_decompose_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_llm_available_false_when_only_endpoint_set() -> None:
+    ctx = ScoutContext(aoai_endpoint="https://example.openai.azure.com")
+    assert llm_available(ctx) is False
+
+
+def test_llm_available_false_when_only_deployment_set() -> None:
+    ctx = ScoutContext(aoai_deployment="gpt-4o-mini")
+    assert llm_available(ctx) is False
+
+
+def test_llm_available_true_when_both_set() -> None:
+    assert llm_available(_ctx()) is True
+
+
+# ─── decompose_intent — call wiring ────────────────────────────────
+
+
+def test_decompose_routes_via_azure_with_token_provider(
+    monkeypatch: pytest.MonkeyPatch, fake_token_provider: None
+) -> None:
     captured: dict[str, Any] = {}
 
     def fake_completion(**kwargs: Any) -> _Resp:
@@ -133,14 +175,19 @@ def test_decompose_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
         return _resp({"directions": _good_directions(3)})
 
     monkeypatch.setattr("litellm.completion", fake_completion)
-    result = decompose_intent(
-        Intent(raw_brief="prompt injection"),
-        ctx=_ctx({"OPENAI_API_KEY": "sk-test"}),
-    )
+    result = decompose_intent(Intent(raw_brief="prompt injection"), ctx=_ctx())
+
     assert len(result) == 3
     assert all(isinstance(d, DecompositionDirection) for d in result)
-    assert captured["model"] == "gpt-4o-mini"
-    assert captured["api_key"] == "sk-test"
+
+    # Azure routing: model prefixed with `azure/` and deployment name.
+    assert captured["model"] == "azure/gpt-4o-mini"
+    assert captured["api_base"] == "https://example.openai.azure.com"
+    assert captured["api_version"] == "2024-10-21"
+    # Entra: a token provider callable, NOT an api_key.
+    assert callable(captured["azure_ad_token_provider"])
+    assert "api_key" not in captured
+
     assert captured["timeout"] == 30.0
     assert captured["response_format"] is DecomposeResponse
     msgs = captured["messages"]
@@ -148,7 +195,14 @@ def test_decompose_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "3-7" in msgs[0]["content"]
 
 
-def test_decompose_retries_once_on_validation_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_decompose_raises_when_unconfigured() -> None:
+    with pytest.raises(LLMError, match="Azure OpenAI is not configured"):
+        decompose_intent(Intent(raw_brief="x"), ctx=ScoutContext())
+
+
+def test_decompose_retries_once_on_validation_error(
+    monkeypatch: pytest.MonkeyPatch, fake_token_provider: None
+) -> None:
     calls: list[Any] = []
 
     def fake_completion(**kwargs: Any) -> _Resp:
@@ -163,7 +217,9 @@ def test_decompose_retries_once_on_validation_error(monkeypatch: pytest.MonkeyPa
     assert len(result) == 3
 
 
-def test_decompose_raises_after_two_validation_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_decompose_raises_after_two_validation_failures(
+    monkeypatch: pytest.MonkeyPatch, fake_token_provider: None
+) -> None:
     def fake_completion(**kwargs: Any) -> _Resp:
         return _resp({"oops": "still wrong"})
 
@@ -172,7 +228,9 @@ def test_decompose_raises_after_two_validation_failures(monkeypatch: pytest.Monk
         decompose_intent(Intent(raw_brief="x"), ctx=_ctx())
 
 
-def test_decompose_clips_to_seven(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_decompose_clips_to_seven(
+    monkeypatch: pytest.MonkeyPatch, fake_token_provider: None
+) -> None:
     def fake_completion(**kwargs: Any) -> _Resp:
         return _resp({"directions": _good_directions(9)})
 
@@ -181,7 +239,9 @@ def test_decompose_clips_to_seven(monkeypatch: pytest.MonkeyPatch) -> None:
     assert len(result) == 7
 
 
-def test_decompose_empty_directions_returns_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_decompose_empty_directions_returns_empty(
+    monkeypatch: pytest.MonkeyPatch, fake_token_provider: None
+) -> None:
     def fake_completion(**kwargs: Any) -> _Resp:
         return _resp({"directions": []})
 
@@ -190,33 +250,12 @@ def test_decompose_empty_directions_returns_empty(monkeypatch: pytest.MonkeyPatc
     assert result == []
 
 
-def test_decompose_wraps_completion_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_decompose_wraps_completion_exception(
+    monkeypatch: pytest.MonkeyPatch, fake_token_provider: None
+) -> None:
     def fake_completion(**kwargs: Any) -> _Resp:
         raise RuntimeError("boom")
 
     monkeypatch.setattr("litellm.completion", fake_completion)
     with pytest.raises(LLMError, match="boom"):
         decompose_intent(Intent(raw_brief="x"), ctx=_ctx())
-
-
-# ─── llm_available ──────────────────────────────────────────────────
-
-
-def test_llm_available_false_with_no_keys(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Strip any ambient keys from the process env so litellm's own
-    # validate_environment can't quietly answer "yes".
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    assert llm_available(_ctx()) is False
-
-
-def test_llm_available_true_with_openai_key_in_ctx(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    ctx = _ctx({"OPENAI_API_KEY": "sk-fake"})
-    assert llm_available(ctx) is True
-
-
-def test_llm_available_true_for_anthropic_model(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    ctx = _ctx({"ANTHROPIC_API_KEY": "sk-ant-fake"}, model="claude-3-5-sonnet-20241022")
-    assert llm_available(ctx) is True

@@ -44,9 +44,10 @@ _DEFAULT_MAX_CANDIDATES = 50
 # Single source of truth for the metadata-only-mode notice. Used by both
 # the stderr emitter and the report header so wording stays in sync.
 METADATA_ONLY_NOTICE = (
-    "Running in metadata-only mode: no LLM provider is configured, so "
+    "Running in metadata-only mode: Azure OpenAI is not configured, so "
     "decomposition, strategy assessment, and coverage gaps were skipped. "
-    "To enable them, copy .env.example to .env and set an LLM API key."
+    "To enable them, copy .env.example to .env, set AZURE_OPENAI_ENDPOINT "
+    "and AZURE_OPENAI_DEPLOYMENT, and run `az login`."
 )
 
 
