@@ -34,3 +34,6 @@ Thumbs.db
 .vscode/
 scratch/
 
+
+.commit_msg
+
