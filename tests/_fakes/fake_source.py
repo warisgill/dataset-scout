@@ -78,7 +78,13 @@ class FakeSource:
         seed: int = 42,
     ) -> Iterator[dict[str, Any]]:
         self.stream_rows_calls += 1
+        # Test hook: a row may contain a sentinel "_raise" key whose value
+        # is the exception to raise instead of yielding rows. Lets tests
+        # exercise the M4c per-component soft-failure path without
+        # subclassing.
         rows = self._samples.get(candidate.id, [])
+        if rows and isinstance(rows[0], dict) and "_raise" in rows[0]:
+            raise rows[0]["_raise"]
         if take is not None:
             rows = rows[:take]
         for row in rows:

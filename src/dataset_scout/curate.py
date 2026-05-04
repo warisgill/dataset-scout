@@ -103,16 +103,20 @@ class CurateResult:
         out_dir: Path,
         components_kept: int,
         components_skipped: int,
+        components_failed: int,
         rows_per_split: dict[str, int],
         fingerprint: str,
         elapsed_seconds: float,
+        failures: list[dict[str, Any]] | None = None,
     ) -> None:
         self.out_dir = out_dir
         self.components_kept = components_kept
         self.components_skipped = components_skipped
+        self.components_failed = components_failed
         self.rows_per_split = rows_per_split
         self.fingerprint = fingerprint
         self.elapsed_seconds = elapsed_seconds
+        self.failures = failures or []
 
     @property
     def total_rows(self) -> int:
@@ -277,6 +281,76 @@ def _build_source_index(
 
 
 # ─── component materialisation ───────────────────────────────────────
+
+
+def _classify_component_failure(c: RecipeComponent, exc: BaseException) -> dict[str, Any]:
+    """Map a per-component exception to a structured failure record with
+    a category and an actionable hint. Categories are stable strings so
+    the lockfile + report stay machine-readable.
+
+    The classifier is heuristic — we look at exception type names and
+    message text, since HuggingFace `datasets` raises a fan-out of
+    typed errors with similar surfaces. Unknown failures still get
+    captured (under category="unknown") so nothing is silently dropped.
+    """
+    msg = str(exc) or exc.__class__.__name__
+    type_name = exc.__class__.__name__
+    lower = msg.lower()
+
+    # Auth-gated dataset (HF requires login).
+    if "gated" in lower or "must be authenticated" in lower or "401" in msg:
+        category = "gated_dataset"
+        hint = "Authenticate (`HF_TOKEN=...`) or remove this component from the recipe."
+    # Multi-config dataset that wasn't pinned to one.
+    elif "config name is missing" in lower or "pick one among the available configs" in lower:
+        category = "missing_config"
+        hint = (
+            "Set `source_config: <config_name>` on this component (the HF "
+            f"dataset {c.source_id!r} has multiple configs)."
+        )
+    # Split name doesn't exist on the dataset.
+    elif "bad split" in lower or "available splits" in lower:
+        category = "bad_split"
+        hint = (
+            "Set `source_split: <split_name>` on this component to one of "
+            "the available splits, or remove the component."
+        )
+    elif (
+        "no (supported) data files" in lower
+        or "doesn't contain any data files" in lower
+        or "couldn't find any data file" in lower
+    ):
+        category = "no_data_files"
+        hint = "The upstream dataset has no parseable data files — remove this component."
+    elif (
+        "error tokenizing data" in lower
+        or "parsererror" in type_name.lower()
+        or "could not parse" in lower
+    ):
+        category = "parse_error"
+        hint = "The upstream data file is malformed; remove this component."
+    elif "datasetnotfounderror" in type_name.lower() or "404" in msg or "does not exist" in lower:
+        category = "not_found"
+        hint = "The dataset was deleted or renamed — remove this component."
+    elif "connection" in lower or "timeout" in lower or "network" in lower:
+        category = "network"
+        hint = "Transient network error; rerun once connectivity is back."
+    else:
+        category = "unknown"
+        hint = "See the message; if it recurs, file an issue with the trace."
+
+    # Cap message length so the lockfile stays readable.
+    short_msg = msg if len(msg) <= 240 else msg[:237] + "..."
+
+    return {
+        "id": c.id,
+        "source": c.source,
+        "source_id": c.source_id,
+        "category": category,
+        "exception_type": type_name,
+        "message": short_msg,
+        "hint": hint,
+    }
 
 
 def _materialize_component(
@@ -447,6 +521,7 @@ def _write_lockfile(
     recipe: Recipe,
     kept: list[RecipeComponent],
     dropped: list[RecipeComponent],
+    failures: list[dict[str, Any]],
     realized: dict[str, dict[str, Any]],
     splits: dict[str, list[NormalizedRecord]],
     dedup_stats: dict[str, Any],
@@ -513,6 +588,7 @@ def _write_lockfile(
             }
             for c in dropped
         ],
+        "failed_components": list(failures),
         "fingerprint": fingerprint,
         "started_at": started_iso,
         "elapsed_seconds": round(elapsed_s, 3),
@@ -554,6 +630,7 @@ def _write_report(
     recipe: Recipe,
     splits: dict[str, list[NormalizedRecord]],
     realized: dict[str, dict[str, Any]],
+    failures: list[dict[str, Any]],
     overrides: CurateOverrides,
     dedup_stats: dict[str, Any],
     fingerprint: str,
@@ -619,6 +696,20 @@ def _write_report(
         rows = info.get("rows_taken", 0)
         license_raw = info.get("license_raw") or "(unknown)"
         lines.append(f"- `{cid}` — {rows:,} rows · license `{license_raw}`")
+
+    if failures:
+        lines += [
+            "",
+            f"## Components skipped due to upstream errors ({len(failures)})",
+            "",
+            "These components were in the recipe but couldn't be "
+            "materialized. The lockfile records each one under "
+            "`failed_components` with category and hint.",
+            "",
+        ]
+        for f in failures:
+            lines.append(f"- `{f['id']}` — **{f['category']}** · {f['hint']}")
+
     lines += [
         "",
         "---",
@@ -765,15 +856,24 @@ def run_curate(
     threat_family = recipe.intent.threat_families[0] if recipe.intent.threat_families else None
     all_records: list[NormalizedRecord] = []
     realized: dict[str, dict[str, Any]] = {}
+    materialised: list[RecipeComponent] = []
+    failures: list[dict[str, Any]] = []
     for c in kept:
-        component_records = list(
-            _materialize_component(
-                c,
-                source=source_index[c.source],
-                threat_family=threat_family,
-                filter_fn=filter_fns.get(c.id),
+        try:
+            component_records = list(
+                _materialize_component(
+                    c,
+                    source=source_index[c.source],
+                    threat_family=threat_family,
+                    filter_fn=filter_fns.get(c.id),
+                )
             )
-        )
+        except KeyboardInterrupt:
+            raise
+        except Exception as exc:
+            failures.append(_classify_component_failure(c, exc))
+            continue
+        materialised.append(c)
         all_records.extend(component_records)
         realized[c.id] = {
             "rows_taken": len(component_records),
@@ -783,6 +883,14 @@ def run_curate(
             "row_identity_method": _component_identity_method(component_records),
             "filter_applied": c.transform.filter,
         }
+
+    if not materialised:
+        # All components failed — emit a structured error so the CLI
+        # can show the user exactly why each one didn't survive.
+        bullets = "\n".join(f"  - {f['id']} [{f['category']}]: {f['hint']}" for f in failures)
+        raise DatasetScoutError(
+            "All components failed to materialize. No corpus written.\n" + bullets
+        )
 
     # ── split (leakage-aware) ──
     proportions = (
@@ -817,8 +925,9 @@ def run_curate(
     _write_lockfile(
         lock_path,
         recipe=recipe,
-        kept=kept,
+        kept=materialised,
         dropped=dropped,
+        failures=failures,
         realized=realized,
         splits=splits,
         dedup_stats=dedup_stats,
@@ -833,6 +942,7 @@ def run_curate(
         recipe=recipe,
         splits=splits,
         realized=realized,
+        failures=failures,
         overrides=overrides,
         dedup_stats=dedup_stats,
         fingerprint=fingerprint,
@@ -843,11 +953,13 @@ def run_curate(
 
     return CurateResult(
         out_dir=out_dir,
-        components_kept=len(kept),
+        components_kept=len(materialised),
         components_skipped=len(dropped),
+        components_failed=len(failures),
         rows_per_split={k: len(v) for k, v in splits.items()},
         fingerprint=fingerprint,
         elapsed_seconds=round(elapsed_s, 3),
+        failures=failures,
     )
 
 

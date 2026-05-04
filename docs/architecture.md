@@ -275,6 +275,7 @@ prompts are **snapshot-tested** — drift surfaces as a PR diff.
 | M3 | ✅ done | `inspect` deep-dive — schema + Wilson-CI label distribution + length stats + license + strategy assessment |
 | M4a | ✅ done | `curate` preview slice — recipe → JSONL + lockfile + manifest + report + fingerprint + usage. |
 | M4b | ✅ done | **MinHash dedup + leakage-aware splitter + filter DSL** — flips `recipe.lock.yaml` `audit_readiness: preview → ready`. Filter expressions sandboxed via `filter_dsl.py`; near-dup clusters (Jaccard ≥ 0.8 over char 5-grams) routed to a single split. |
+| M4c | ✅ done | **Per-component soft failures** — gated datasets, missing configs, bad splits, parse errors, and unknown errors are classified, recorded under `failed_components` in the lockfile + report with actionable hints, and curate continues with the rest. Pipeline only fails if every component errors. |
 | M5 | 🔄 next | real-brief validation, ship 1.0 |
 
 Detail in [`docs/concepts.md`](concepts.md) and the (archived)

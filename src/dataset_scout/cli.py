@@ -438,11 +438,23 @@ def curate(
     err.print(
         f"[green]✔[/green] {result.total_rows} row(s) written to {result.out_dir} "
         f"({result.components_kept} component(s) kept, "
-        f"{result.components_skipped} skipped) in {result.elapsed_seconds:.2f}s"
+        f"{result.components_skipped} skipped"
+        + (f", {result.components_failed} failed" if result.components_failed else "")
+        + f") in {result.elapsed_seconds:.2f}s"
     )
     splits_str = " · ".join(f"{n}={c}" for n, c in result.rows_per_split.items())
     err.print(f"  - splits: {splits_str}")
     err.print(f"  - fingerprint: {result.fingerprint[:16]}...")
+    if result.failures:
+        err.print(
+            f"  [yellow]![/yellow] {len(result.failures)} component(s) skipped "
+            "due to upstream errors — see report.md / recipe.lock.yaml "
+            "→ failed_components for hints:"
+        )
+        for f in result.failures[:5]:
+            err.print(f"    - {f['id']} [{f['category']}]: {f['hint']}")
+        if len(result.failures) > 5:
+            err.print(f"    ... and {len(result.failures) - 5} more in the lockfile.")
     err.print("  [green]✔[/green] audit-ready: leakage-aware splits + filter DSL applied.")
 
 

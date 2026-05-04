@@ -395,3 +395,158 @@ def test_extras_coerce_bytes_values(tmp_path: Path):
             rec = NormalizedRecord.model_validate_json(line)
             assert rec.extras_coercion is True
             assert isinstance(rec.extras["image_bytes"], str)
+
+
+# ─── M4c: per-component soft failure ────────────────────────────────
+
+
+def _multi_fake(
+    samples_by_id: dict[str, list[dict[str, object]]],
+) -> FakeSource:
+    candidates = [
+        Candidate(source="fake", id=cid, revision="r1", metadata=CandidateMetadata())
+        for cid in samples_by_id
+    ]
+    return FakeSource(candidates, samples=samples_by_id)
+
+
+def _component_for(source_id: str, *, cid: str | None = None) -> RecipeComponent:
+    return RecipeComponent(
+        id=cid or f"fake_{source_id.replace('/', '_')}",
+        source="fake",
+        source_id=source_id,
+        revision="r1",
+        source_split="train",
+        strategy=StrategyKind.DIRECT_USE,
+        strategy_confidence=0.9,
+        transform=RecipeTransform(
+            text_column="text",
+            label_column="label",
+            label_value_map={"1": "positive", "0": "benign"},
+            label_kind_map={},
+            filter=None,
+            take="all",
+        ),
+    )
+
+
+def test_curate_skips_failing_component_and_continues(tmp_path: Path):
+    """One component crashes mid-stream — the other still produces a corpus."""
+    good_rows = _two_class_rows(n=20)
+    bad_sentinel = [
+        {
+            "_raise": ValueError(
+                "Config name is missing.\nPlease pick one among the available "
+                "configs: ['jailbreak_2023_05_07', 'jailbreak_2023_12_25']"
+            )
+        }
+    ]
+    fake = _multi_fake({"org/good": good_rows, "org/bad": bad_sentinel})
+    recipe = _make_recipe(components=[_component_for("org/good"), _component_for("org/bad")])
+
+    result = run_curate(recipe, tmp_path / "corpus", ctx=_ctx(), sources_override=[fake])
+
+    assert result.total_rows == 20
+    assert result.components_kept == 1
+    assert result.components_failed == 1
+    assert len(result.failures) == 1
+    failure = result.failures[0]
+    assert failure["category"] == "missing_config"
+    assert "source_config" in failure["hint"]
+
+
+def test_curate_classifies_gated_dataset(tmp_path: Path):
+    rows = _two_class_rows(n=10)
+    bad = [
+        {
+            "_raise": Exception(
+                "Dataset 'org/bad' is a gated dataset on the Hub. You must be "
+                "authenticated to access it."
+            )
+        }
+    ]
+    fake = _multi_fake({"org/good": rows, "org/bad": bad})
+    recipe = _make_recipe(components=[_component_for("org/good"), _component_for("org/bad")])
+
+    result = run_curate(recipe, tmp_path / "corpus", ctx=_ctx(), sources_override=[fake])
+
+    assert result.failures[0]["category"] == "gated_dataset"
+    assert "HF_TOKEN" in result.failures[0]["hint"]
+
+
+def test_curate_classifies_bad_split(tmp_path: Path):
+    rows = _two_class_rows(n=10)
+    bad = [{"_raise": ValueError("Bad split: train. Available splits: ['test']")}]
+    fake = _multi_fake({"org/good": rows, "org/bad": bad})
+    recipe = _make_recipe(components=[_component_for("org/good"), _component_for("org/bad")])
+
+    result = run_curate(recipe, tmp_path / "corpus", ctx=_ctx(), sources_override=[fake])
+
+    assert result.failures[0]["category"] == "bad_split"
+    assert "source_split" in result.failures[0]["hint"]
+
+
+def test_curate_records_failures_in_lockfile(tmp_path: Path):
+    rows = _two_class_rows(n=10)
+    bad = [
+        {
+            "_raise": Exception(
+                "Dataset 'org/bad' is a gated dataset on the Hub. You must be authenticated."
+            )
+        }
+    ]
+    fake = _multi_fake({"org/good": rows, "org/bad": bad})
+    recipe = _make_recipe(components=[_component_for("org/good"), _component_for("org/bad")])
+
+    out = tmp_path / "corpus"
+    run_curate(recipe, out, ctx=_ctx(), sources_override=[fake])
+
+    lock = yaml.safe_load((out / "recipe.lock.yaml").read_text(encoding="utf-8"))
+    assert "failed_components" in lock
+    assert len(lock["failed_components"]) == 1
+    entry = lock["failed_components"][0]
+    assert entry["id"] == "fake_org_bad"
+    assert entry["category"] == "gated_dataset"
+    assert "exception_type" in entry
+    assert "hint" in entry
+
+    # The failed component must NOT show up in the realized components list.
+    component_ids = {c["id"] for c in lock["components"]}
+    assert "fake_org_good" in component_ids
+    assert "fake_org_bad" not in component_ids
+
+
+def test_curate_records_failures_in_report(tmp_path: Path):
+    rows = _two_class_rows(n=10)
+    bad = [{"_raise": ValueError("Bad split: train. Available splits: ['test']")}]
+    fake = _multi_fake({"org/good": rows, "org/bad": bad})
+    recipe = _make_recipe(components=[_component_for("org/good"), _component_for("org/bad")])
+
+    out = tmp_path / "corpus"
+    run_curate(recipe, out, ctx=_ctx(), sources_override=[fake])
+
+    report = (out / "report.md").read_text(encoding="utf-8")
+    assert "skipped due to upstream errors" in report
+    assert "fake_org_bad" in report
+    assert "bad_split" in report
+
+
+def test_curate_raises_when_all_components_fail(tmp_path: Path):
+    bad = [{"_raise": Exception("Dataset 'org/bad' is a gated dataset on the Hub.")}]
+    fake = _multi_fake({"org/bad": bad})
+    recipe = _make_recipe(components=[_component_for("org/bad")])
+
+    with pytest.raises(DatasetScoutError, match="All components failed"):
+        run_curate(recipe, tmp_path / "corpus", ctx=_ctx(), sources_override=[fake])
+
+
+def test_curate_classifies_unknown_failure(tmp_path: Path):
+    rows = _two_class_rows(n=10)
+    bad = [{"_raise": RuntimeError("totally unexpected error")}]
+    fake = _multi_fake({"org/good": rows, "org/bad": bad})
+    recipe = _make_recipe(components=[_component_for("org/good"), _component_for("org/bad")])
+
+    result = run_curate(recipe, tmp_path / "corpus", ctx=_ctx(), sources_override=[fake])
+
+    assert result.failures[0]["category"] == "unknown"
+    assert result.failures[0]["exception_type"] == "RuntimeError"
