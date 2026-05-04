@@ -250,12 +250,23 @@ Output:
 
 ```
 ✔ 4,231 row(s) written to over-refusal-corpus (5 component(s) kept,
-  2 skipped) in 47.8s
+  2 skipped, 1 failed) in 47.8s
   - splits: train=3385 · val=419 · test=427
   - fingerprint: 8f3a40b1c2d4e007...
+  ! 1 component(s) skipped due to upstream errors — see report.md
+    / recipe.lock.yaml → failed_components for hints:
+    - huggingface_TrustAIRLab_in-the-wild-jailbreak-prompts
+      [missing_config]: Set `source_config: <config_name>` on this
+      component (the HF dataset has multiple configs).
   ✓ audit-ready: leakage-aware splits + filter DSL applied
     (MinHash dedup, num_perm=128, threshold=0.8)
 ```
+
+A "kept / skipped / failed" line is the new normal: real recipes
+often have one or two components that need a `source_config` or
+`source_split` set. The corpus still ships from the rest, and the
+hint tells you exactly what one-line edit re-enables the laggard
+on the next run. **No restart, no triage from a stack trace.**
 
 Inside `over-refusal-corpus/`:
 

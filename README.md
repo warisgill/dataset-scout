@@ -114,6 +114,12 @@ fingerprint, and snippet-pasteable usage instructions for HF
    distributions per component, override sources for every CLI flag.
    The single file a reviewer can ask about.
 
+7. **Curate is resilient.** A gated dataset, a multi-config dataset
+   the LLM didn't pin, a parse-broken CSV, or a non-standard split
+   doesn't kill the run — each one is classified, recorded under
+   `failed_components` in the lockfile + report with an actionable
+   hint, and the corpus is built from whatever did succeed.
+
 ---
 
 ## Use cases
@@ -190,9 +196,12 @@ overhead.
 - **Reproducibility is contingent.** `recipe.lock.yaml` pins
   revisions and content hashes. If upstreams delete the data, only an
   archive (a future feature) makes the blend reproducible standalone.
-- **`curate` is audit-ready.** MinHash dedup keeps near-duplicates
-  in the same split, filter DSL applies to recipes, lockfile records
-  `audit_readiness: ready` with full dedup parameters. Still: a
+- **`curate` is audit-ready and resilient.** MinHash dedup keeps
+  near-duplicates in the same split, filter DSL applies to recipes,
+  lockfile records `audit_readiness: ready` with full dedup
+  parameters. Per-component upstream errors (gated, missing config,
+  bad split, parse errors) are classified and recorded under
+  `failed_components` rather than crashing the run. Still: a
   defensible *corpus* doesn't excuse a sloppy threat model — read
   the report and `inspect` before you trust it.
 - **Not legal advice.** License signals are an SPDX best-effort

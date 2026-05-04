@@ -165,11 +165,11 @@ tools should filter to `label_kind != "proxy"` for evaluation.
 
 ## 7. Recipes and lockfiles
 
-The output of `recon` includes a `recipe.draft.yaml`. Hand-edit it
-(adjust strategies, drop candidates, add explicit components), then
-hand it to `datascout curate --from recipe.yaml` *(M4 — coming next)*.
+The output of `recon` includes a `recipe.draft.yaml`. Edit if you
+want — drop weak components, cap `take`, tighten `filter` — and
+hand it to `datascout curate --from recipe.yaml`.
 
-`curate` will materialise the recipe into:
+`curate` materialises the recipe into:
 
 ```
 mycorpus/
@@ -183,8 +183,37 @@ mycorpus/
 ```
 
 `recipe.lock.yaml` is **the defensible record** — the single file a
-reviewer can ask about: which corpus did this detector train on, and
-how did proxies factor in?
+reviewer can ask about: which corpus did this detector train on, how
+did proxies factor in, and what was deliberately excluded? It carries
+`audit_readiness: ready`, the MinHash dedup parameters, every
+component that made it in (with realised row counts and label-kind
+distribution), the `declined_components` list (below
+`min_strategy_confidence`), and the `failed_components` list
+(see below).
+
+### Per-component soft failures
+
+Real recipes drawn from a fresh `recon` often have one or two
+components that need a tweak before they materialise — the most
+common reasons are listed under predictable categories so a single
+glance at the lockfile or report tells you exactly what to do:
+
+| Category | What it means | Typical fix |
+|---|---|---|
+| `gated_dataset` | The HF dataset requires authentication. | Set `HF_TOKEN`, or remove the component. |
+| `missing_config` | The HF dataset has multiple configs and none was pinned. | Set `source_config: <name>` on the component. |
+| `bad_split` | The named split doesn't exist on the dataset. | Set `source_split: <name>` to a real split. |
+| `no_data_files` | The dataset has no parseable data files. | Remove the component. |
+| `parse_error` | The upstream data file is malformed. | Remove the component. |
+| `not_found` | The dataset was deleted or renamed. | Remove the component. |
+| `network` | Transient connectivity error. | Re-run. |
+| `unknown` | Anything else; full message is preserved. | Read the message; file an issue if reproducible. |
+
+Curate **does not crash** on per-component failures — they're recorded
+under `failed_components` in `recipe.lock.yaml` and surfaced in
+`report.md` and the CLI summary. The corpus is built from whatever
+components did succeed. The pipeline only fails hard if every
+component errors out (in which case there's nothing useful to write).
 
 ---
 

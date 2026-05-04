@@ -220,11 +220,22 @@ The pipeline ships a defensible end-to-end build:
   (Jaccard ≥ 0.8 over char 5-grams) cluster together; whole
   clusters are assigned to a single split. Cluster stats are
   written to the lockfile.
+- ✅ **Resilient to per-component upstream errors.** Gated
+  datasets, multi-config datasets without a `source_config`,
+  non-standard split names, parse errors — each is classified
+  (categories: `gated_dataset`, `missing_config`, `bad_split`,
+  `no_data_files`, `parse_error`, `not_found`, `network`,
+  `unknown`) and recorded under `failed_components` in the
+  lockfile with an actionable hint. The corpus continues to build
+  from what does succeed; the run only fails hard if every
+  component errors out.
 
 `recipe.lock.yaml` records `audit_readiness: ready` with the
 MinHash params (`num_perm`, `threshold`, `shingle_size`,
-`dedup_version`) + filter expressions in scope. `report.md`
-carries an "audit-ready" banner with cluster stats so the corpus's
+`dedup_version`) + filter expressions in scope, and a
+`failed_components` block when applicable. `report.md` carries
+an "audit-ready" banner with cluster stats and a "Components
+skipped due to upstream errors" section so the corpus's
 provenance is visible at a glance.
 
 ---
