@@ -253,7 +253,8 @@ in here, the corpus reflects.
 ## 7. Curate the corpus
 
 ```bash
-datascout curate --from recipe.yaml --out ./over-refusal-corpus
+datascout curate --from recipe.yaml --out ./over-refusal-corpus \
+    --max-concurrency 6
 ```
 
 Output:
@@ -277,6 +278,15 @@ often have one or two components that need a `source_config` or
 `source_split` set. The corpus still ships from the rest, and the
 hint tells you exactly what one-line edit re-enables the laggard
 on the next run. **No restart, no triage from a stack trace.**
+
+> **Speed knobs.** Most of the per-component cost is HuggingFace
+> `load_dataset` setup overhead (split discovery, parquet header
+> fetch). `--max-concurrency 6` materialises 6 components in
+> parallel — meaningful speedup since the work is I/O-bound.
+> `--max-rows-per-component 500` caps the row count for one run
+> without editing the recipe — useful for fast first-pass
+> inspection. Both are deterministic: same recipe + same seed →
+> same fingerprint regardless of which workers finish first.
 
 Inside `over-refusal-corpus/`:
 

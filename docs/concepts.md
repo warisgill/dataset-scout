@@ -207,6 +207,7 @@ glance at the lockfile or report tells you exactly what to do:
 | `parse_error` | The upstream data file is malformed. | Remove the component. |
 | `not_found` | The dataset was deleted or renamed. | Remove the component. |
 | `network` | Transient connectivity error. | Re-run. |
+| `rate_limited` | Hit HTTP 429 / "Too Many Requests" upstream. | Set `HF_TOKEN` for higher quotas, or lower `--max-concurrency`. |
 | `unknown` | Anything else; full message is preserved. | Read the message; file an issue if reproducible. |
 
 Curate **does not crash** on per-component failures — they're recorded
@@ -232,9 +233,28 @@ the recipe, pass `--max-rows-per-component N` to `curate` — it
 lowers the recipe's value but never raises it (the recipe stays
 the source of truth).
 
+### Parallel materialisation
+
+Per-component HuggingFace `load_dataset(streaming=True)` setup
+(split discovery, parquet header fetch, schema inference) is the
+dominant cost in `curate` — typically 30s-several minutes per
+component. Running components in parallel gives near-linear
+speedup since the work is I/O-bound.
+
+`curate` ships with **`--max-concurrency 4`** by default;
+`--max-concurrency 6` is a comfortable upper end for most
+recipes. Workers are kept low to avoid HF rate limits (HTTP 429s
+classify cleanly as `failed_components` with a hint pointing at
+`HF_TOKEN` and lower concurrency).
+
+Determinism is a contract: results are keyed by component id and
+reassembled in original recipe order before splitting, so the
+fingerprint, lockfile, and JSONL contents are identical regardless
+of which workers complete first.
+
 This is the difference between "first sanity-check run" (cap on,
-~minutes) and "production-blend materialisation" (cap off,
-hours-but-once).
+~minutes for typical recipes) and "production-blend
+materialisation" (cap off, hours-but-once).
 
 ---
 

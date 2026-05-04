@@ -49,7 +49,7 @@ echo "AZURE_OPENAI_ENDPOINT=https://my-aoai.openai.azure.com" > .env
 echo "AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini"                  >> .env
 
 # 1. Iterate on the brief cheaply (~5 s, one LLM call)
-datascout decompose "your brief here" --out scratch/
+datascout decompose "your brief here" --out scratch/decomposition.yaml
 
 # 2. Once the directions look right, run the full recon
 #    reusing the decomposition (skips re-paying the decompose call)
@@ -57,15 +57,23 @@ datascout recon "your brief here" \
     --decomposition-from scratch/decomposition.yaml \
     --out scratch/recon/
 
-# 3. Curate straight to JSONL — recipe.draft.yaml has real
-#    column names because the assessor sampled rows during recon
-datascout curate --from scratch/recon/recipe.draft.yaml --out ./mycorpus
+# 3. Curate straight to JSONL — recipe.draft.yaml has real column
+#    names because the assessor sampled rows during recon. Workers
+#    materialise components in parallel; the auto-capped `take`
+#    keeps a first-pass build under ~20 minutes even on a
+#    12-component recipe over heavy code corpora.
+datascout curate --from scratch/recon/recipe.draft.yaml \
+    --out ./mycorpus \
+    --max-concurrency 6 \
+    --max-rows-per-component 500
 ```
 
-The output is a six-file corpus with leakage-aware splits, a
-`recipe.lock.yaml` audit record, a 5-second scorecard report, a
-fingerprint, and snippet-pasteable usage instructions for HF
-`datasets`, pandas, and raw JSONL.
+The output is a six-file corpus with **leakage-aware splits**
+(MinHash + LSH dedup keeps near-duplicates on the same side of the
+split), a **`recipe.lock.yaml` audit record** (`audit_readiness:
+ready`, dedup parameters, every kept/declined/failed component with
+hint), a 5-second scorecard report, a fingerprint, and
+snippet-pasteable usage for HF `datasets`, pandas, and raw JSONL.
 
 > **Tip:** `datascout decompose` is the cheap brief-iteration loop.
 > Use it to refine briefs before you pay for the full ~2-minute recon.
@@ -114,11 +122,15 @@ fingerprint, and snippet-pasteable usage instructions for HF
    distributions per component, override sources for every CLI flag.
    The single file a reviewer can ask about.
 
-7. **Curate is resilient.** A gated dataset, a multi-config dataset
-   the LLM didn't pin, a parse-broken CSV, or a non-standard split
-   doesn't kill the run — each one is classified, recorded under
-   `failed_components` in the lockfile + report with an actionable
-   hint, and the corpus is built from whatever did succeed.
+7. **Curate is resilient AND fair.** A gated dataset, a multi-config
+   dataset the LLM didn't pin, a parse-broken CSV, a non-standard
+   split, or an HTTP 429 doesn't kill the run — each one is
+   classified, recorded under `failed_components` in the lockfile
+   + report with an actionable hint, and the corpus is built from
+   whatever did succeed. Components materialise **in parallel**
+   (default 4 workers, configurable via `--max-concurrency`)
+   with deterministic reassembly: same recipe + same seed → same
+   fingerprint regardless of completion order.
 
 ---
 
