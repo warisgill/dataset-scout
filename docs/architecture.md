@@ -13,21 +13,20 @@ brief + flags
     ▼
 HeuristicIntentParser  ────▶  Intent
     │
+    ▼ (brief_smell_warnings → notices)
+    │
     ▼
 llm_available(ctx)?  ──── No ──▶  metadata-only mode
     │ Yes
     ▼
-decompose_intent (Azure OpenAI / Entra)
-    │
-    ▼
+decompose_intent (Azure OpenAI / Entra)        ←──  --decomposition-from
+    │                                                 reuses a saved file
+    ▼                                                 and skips this call
 DecompositionDirection × N
     │
     ▼
-Source.search(intent, directions, …)
+Source.search(intent, directions, …)  → Candidate pool (deduped, surfaced_by)
     │      (HF today; Kaggle / PWC in M1b)
-    ▼
-dedupe + merge surfaced_by ─────────────► Candidate pool
-    │
     ▼
 Cheap probes (license, size, recency, freshness, languages, card_completeness)
     │
@@ -39,19 +38,23 @@ select_top_for_assessor (stage-1 per-direction, stage-2 quality re-rank)
     │
     ▼
 LLM strategy assessor on top-15-20  ─────► Strategy[] per candidate
-    │
-    ▼
+    │       │
+    │       └─── source.stream_rows(candidate, take=8)  ←── ROW-AWARE
+    │                                                       transforms get
+    ▼                                                       REAL columns
 LLM coverage report  ──────────────────► CoverageGap[]
     │
     ▼
 re-rank scorecards by best_strategy + kind bonus
     │
     ▼
-ReconResult ─── render ──▶  report.md
+ReconResult ─── render ──▶  report.md         (gaps lead when notable)
                          │
                          └▶  results.json
                          │
-                         └▶  recipe.draft.yaml
+                         └▶  decomposition.yaml  (stand-alone, hand-editable)
+                         │
+                         └▶  recipe.draft.yaml   (real columns ready for curate)
 ```
 
 Plain Python iterator pipeline. No DAG framework, no Celery, no Ray.
@@ -69,16 +72,19 @@ src/dataset_scout/
 │                           NormalizedRecord, … — the typed vocabulary
 ├── errors.py               DatasetScoutError, LLMError, SourceUnavailableError, …
 ├── events.py               ProgressEvent / ProgressEventKind
-├── intent.py               HeuristicIntentParser
+├── intent.py               HeuristicIntentParser + brief_smell_warnings
 ├── llm_client.py           shared AOAI/Entra plumbing for LLM call sites
 ├── decompose.py            LLM decomposition (Azure OpenAI + Entra)
-├── strategy.py             LLM per-candidate strategy assessor
+├── decomposition_io.py     decomposition.yaml read/write (--decomposition-from)
+├── strategy.py             LLM per-candidate strategy assessor (row-aware)
 ├── coverage.py             LLM coverage-gap report
 ├── shortlist.py            two-stage selector for the assessor
 ├── recipe.py               typed Recipe / RecipeComponent / RecipeTransform models
 ├── recipe_draft.py         recipe.draft.yaml emission
-├── inspect_.py             single-candidate deep-dive (M3)
+├── recipe_compose.py       merge multiple recipes (datascout compose)
+├── inspect_.py             single-candidate deep-dive
 ├── curate.py               recipe → corpus orchestrator (M4a preview)
+├── tour.py                 canned demo for `datascout tour`
 ├── stats.py                Wilson score CI helper
 ├── pipeline.py             run_recon orchestrator
 ├── licenses.py             tiny SPDX guesser
@@ -91,7 +97,7 @@ src/dataset_scout/
 │   └── cheap.py            6 metadata-driven probes
 └── render/
     ├── json_writer.py      results.json
-    ├── markdown_report.py  report.md (4 framings)
+    ├── markdown_report.py  report.md (4 framings + sourcing-roadmap lead)
     └── inspect_panel.py    inspect deep-dive markdown
 ```
 
@@ -263,9 +269,10 @@ prompts are **snapshot-tested** — drift surfaces as a PR diff.
 | M1b | ⏳ deferred | sample-driven probes, embedding fit, Kaggle, PWC, cache |
 | M2a | ✅ done | Azure OpenAI Entra, LLM decomposition, multi-direction search, surfaced_by, mode detection |
 | M2b | ✅ done | strategy assessor, coverage report, recipe.draft.yaml, two-stage shortlist, ranked report |
+| **Wow loop** | ✅ done | `tour` (no-setup demo), `decompose` (cheap brief iteration), `--decomposition-from` reuse, **row-aware strategy assessor** (recipes ship with REAL columns), `compose` (multi-recipe merge), sourcing-roadmap-led report, brief-smell hints |
+| M3 | ✅ done | `inspect` deep-dive — schema + Wilson-CI label distribution + length stats + license + strategy assessment |
 | M4a | ✅ done | `curate` preview slice — recipe → JSONL + lockfile + manifest + report + fingerprint + usage. Hash-mod split (NOT leakage-aware), filter DSL hard-fails. |
-| M4b | 🔄 next | MinHash dedup + leakage-aware splitter + filter DSL — turns curate output into the audit-grade record. |
-| M3 | ⏳ | `inspect` deep-dive |
+| M4b | 🔄 next | MinHash dedup + leakage-aware splitter + filter DSL — flips `recipe.lock.yaml` `audit_readiness: preview → ready` |
 | M5 | ⏳ | real-brief validation, ship 1.0 |
 
 Detail in [`docs/concepts.md`](concepts.md) and the (archived)

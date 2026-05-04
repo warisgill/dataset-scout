@@ -12,11 +12,79 @@ wrapper — anything you can do from the CLI is also exposed in
 `dataset_scout.recon()` / `inspect()` / `curate()` (see the library
 section of [architecture.md](architecture.md)).
 
+## Verb cheat-sheet
+
+| Verb | What it does | Cost |
+|---|---|---|
+| [`tour`](#tour) | Render a fully-populated demo report from canned data | none — no AOAI/HF |
+| [`decompose`](#decompose) | LLM brief decomposition only (cheap iteration loop) | ~5s, 1 LLM call |
+| [`recon`](#recon) | Full pipeline → `report.md` + `results.json` + `recipe.draft.yaml` + `decomposition.yaml` | ~2 min, ~16 LLM calls |
+| [`inspect`](#inspect) | One-candidate deep-dive | ~5s + optional 1 LLM call |
+| [`curate`](#curate) | Recipe → JSONL + lockfile | depends on row count |
+| [`compose`](#compose) | Merge multiple recipes into one | none — local |
+| [`cache`](#cache) | Inspect / prune / clear the cache | M1b — not yet implemented |
+| [`sources`](#sources) | List / toggle source plugins | local |
+
+---
+
+## `tour`
+
+A 30-second demo with **no external services**: no HuggingFace token,
+no Azure OpenAI configuration. The command renders a fully-populated
+recon report from canned data so a new user can see the value
+immediately.
+
+```bash
+datascout tour                # → stdout
+datascout tour --out scratch  # → also persist artefacts
+```
+
+| Option | Description |
+|---|---|
+| `--out PATH` | Persist the demo's `results.json`, `recipe.draft.yaml`, `decomposition.yaml`, `report.md`. |
+
+Use this in PRs, slack messages, or first-time onboarding.
+
+---
+
+## `decompose`
+
+The cheap brief-iteration verb. Just runs the LLM decomposition step
+— ~5 seconds and one LLM call. Prints the proposed directions to
+stdout; `--out` optionally writes them to `decomposition.yaml`.
+
+```bash
+datascout decompose "<brief>" [options]
+```
+
+| Option | Description |
+|---|---|
+| `--detection-target TEXT` | Override the parsed detection target. |
+| `--deployment-context TEXT` | Production / RAG / agent / etc. |
+| `--out PATH` | Write `decomposition.yaml` to this directory; otherwise stdout-only. |
+
+### The cheap-iteration loop
+
+```bash
+# Try it
+datascout decompose "<v1 brief>"
+# Don't like the directions? Refine and retry.
+datascout decompose "<v2 brief>"
+# Once happy, persist
+datascout decompose "<v2 brief>" --out scratch/
+# Run the full recon, skipping the (now-paid-for) decompose step
+datascout recon "<v2 brief>" --decomposition-from scratch/decomposition.yaml --out scratch/recon/
+```
+
+You'd otherwise burn ~2 minutes per iteration paying for full recons
+just to see the directions.
+
 ---
 
 ## `recon`
 
-Find candidate datasets and emit a discovery report.
+Find candidate datasets, run probes, assess strategies, identify
+coverage gaps, emit a draft recipe.
 
 ```bash
 datascout recon "<brief>" [options]
@@ -26,45 +94,46 @@ datascout recon "<brief>" [options]
 
 | Argument | Required | Description |
 |---|---|---|
-| `BRIEF` | yes | Natural-language description of what you're looking for. The brief carries the signal; flags are nudges. |
+| `BRIEF` | yes | Natural-language brief describing the **dataset you want** (not the detector you'll build — see `concepts.md` §9). |
 
 ### Options
 
 | Option | Default | Description |
 |---|---|---|
-| `--detection-target TEXT` | parser-derived | Override the detection target inferred from the brief. |
+| `--detection-target TEXT` | parser-derived | Override the parsed detection target. |
 | `--deployment-context TEXT` | parser-derived | Production / RAG / agent / etc. |
 | `--language TEXT` | `en` | Required language(s); repeat for multiple. |
 | `--license TEXT` | permissive set | License allowlist; repeat for multiple. |
 | `--min-strategy-confidence FLOAT` | `0.5` | Strategies below this confidence are filtered out of the draft recipe. Recipe-authoritative — `curate` defaults to the value baked into the recipe. |
+| `--decomposition-from PATH` | — | Reuse a hand-edited `decomposition.yaml` instead of paying for a fresh LLM decompose call. |
 | `--out PATH` | `datascout-out/` | Output directory. |
 
 ### Outputs
 
 ```
 <out>/
-├── report.md          discovery + decomposition + per-candidate strategies + coverage gaps
-├── results.json       structured ReconResult (Pydantic dump)
-└── recipe.draft.yaml  hand-editable input for `datascout curate` (M4)
-                       — emitted only when LLM strategies were assessed
+├── report.md            human-readable, LEADS WITH coverage gaps when notable
+├── results.json         structured ReconResult (Pydantic dump)
+├── decomposition.yaml   stand-alone direction list (hand-editable)
+└── recipe.draft.yaml    hand-editable input for `datascout curate` —
+                          contains REAL column names from row sampling
+                          when the LLM strategy assessor runs
 ```
 
 ### Examples
 
 ```bash
-# Most common
-datascout recon "find labeled prompt injection corpora for our RAG service"
-
-# Force a license restriction
-datascout recon "jailbreak detector training data" --license MIT --license Apache-2.0
+# Most common — natural-language brief
+datascout recon "HTML and Markdown corpora with labelled hidden text — phishing pages and accessibility benigns"
 
 # Multi-language
-datascout recon "unsafe output detection" --language en --language ja
+datascout recon "refusal-labeled customer-support corpora" --language en --language es
 
-# Steer detection target explicitly
-datascout recon "data for LLM safety filter" \
-    --detection-target "harmful response classification" \
-    --deployment-context "consumer chatbot"
+# Reuse a prior decomposition (cheap iteration)
+datascout recon "<refined brief>" --decomposition-from scratch/decomposition.yaml
+
+# Force a license restriction
+datascout recon "..." --license MIT --license Apache-2.0
 ```
 
 ### Hidden expert flags
@@ -89,17 +158,9 @@ One-candidate deep-dive. Renders to **stdout** so it pipes cleanly:
 datascout inspect <source>:<id>[@revision] [options]
 ```
 
-### Arguments
-
-| Argument | Required | Description |
-|---|---|---|
-| `TARGET` | yes | `<source>:<id>[@revision]` — e.g. `huggingface:deepset/prompt-injections`. The `<source>:` prefix is optional and defaults to `huggingface`. |
-
-### Options
-
 | Option | Default | Description |
 |---|---|---|
-| `--intent-from PATH` | — | Re-use the most recent recon's Intent (point at `results.json`). The strategy assessor sees the same Intent recon used, so the assessment is consistent. |
+| `--intent-from PATH` | — | Re-use the most recent recon's Intent (point at `results.json`). The strategy assessor sees the same Intent recon used. |
 | `--brief TEXT` | — | One-off brief for strategy assessment when no recon `results.json` exists. Mutually exclusive with `--intent-from`. |
 | `--sample-size INT` | `50` | Rows to stream for the schema / label-distribution / sample sections. |
 
@@ -113,22 +174,16 @@ datascout inspect <source>:<id>[@revision] [options]
 6. **Text-length stats** — min / median / max characters for the heuristically-picked text column.
 7. **Sample rows** — first five.
 8. **Strategy assessment** — when `--intent-from` or `--brief` is supplied AND AOAI is configured.
-9. **Notices** — any degraded-mode behaviour (no AOAI, metadata fetch hiccup, etc.).
-
-### Examples
 
 ```bash
 # Quick metadata-only deep-dive
-datascout inspect huggingface:deepset/prompt-injections
+datascout inspect huggingface:bench-llm/or-bench
 
 # With a fresh brief — adds LLM strategy assessment if AOAI is set
-datascout inspect huggingface:deepset/prompt-injections --brief "find labeled prompt injection corpora"
+datascout inspect huggingface:bench-llm/or-bench --brief "refusal-labeled corpora for support agents"
 
 # Re-use the Intent from your latest recon
-datascout inspect huggingface:walledai/AdvBench --intent-from datascout-out/results.json
-
-# Pin a specific revision
-datascout inspect huggingface:deepset/prompt-injections@4f61ecb038e9
+datascout inspect huggingface:walledai/XSTest --intent-from datascout-out/results.json
 ```
 
 ---
@@ -162,11 +217,46 @@ The current slice ships a working pipeline but isn't yet audit-ready:
 
 Output `report.md` carries an explicit "preview build, not
 audit-ready" banner. `recipe.lock.yaml` records
-`audit_readiness: preview` with a note about deferred features. M4b
-flips both to audit-ready without changing the recipe shape.
+`audit_readiness: preview` with a note about deferred features.
 
-Output layout described in
-[concepts.md](concepts.md#7-recipes-and-lockfiles).
+---
+
+## `compose`
+
+Merge multiple recipes into one — for multi-detection programs that
+share a corpus.
+
+```bash
+datascout compose recipe-a.yaml recipe-b.yaml [recipe-c.yaml ...] --out merged.yaml
+```
+
+| Option | Description |
+|---|---|
+| `--out PATH` | Required. Path to write the merged recipe.yaml. |
+| `--intent-brief TEXT` | Override the merged intent's brief (default: keep the first input's). |
+
+### Semantics
+
+- Components dedupe by `(source, source_id)`. Higher
+  `strategy_confidence` wins on conflict; the loser becomes a notice.
+- `min_strategy_confidence` takes the **maximum** of the inputs (most
+  conservative wins).
+- Declined entries are unioned and deduped.
+- Intent comes from the first input unless `--intent-brief` overrides.
+  When inputs have different briefs, a notice is recorded.
+
+```bash
+# Three sub-detection programs into one corpus
+datascout compose \
+    detection-1/recipe.draft.yaml \
+    detection-2/recipe.draft.yaml \
+    detection-3/recipe.draft.yaml \
+    --out programs/merged.yaml \
+    --intent-brief "Content Injection Traps — combined corpus"
+
+# Then materialise
+datascout curate --from programs/merged.yaml --out programs/corpus/
+```
 
 ---
 
@@ -175,9 +265,9 @@ Output layout described in
 Inspect and manage the SQLite cache.
 
 ```bash
-datascout cache info       # size, hit counts, oldest / newest entries
-datascout cache prune      # evict to a target size
-datascout cache clear      # wipe everything
+datascout cache info
+datascout cache prune
+datascout cache clear
 ```
 
 ---
@@ -213,6 +303,6 @@ datascout sources disable <name>   # M1b
 
 ## See also
 
-- [Concepts](concepts.md) — what the report's framing language means.
+- [Concepts](concepts.md) — how to write a brief, what the report's framing language means.
 - [Configuration](configuration.md) — `.env`, Azure OpenAI, HF.
 - [Architecture](architecture.md) — what runs under each verb.

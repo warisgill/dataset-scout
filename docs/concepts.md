@@ -87,19 +87,15 @@ Six metadata-driven probes ship today:
 | `languages` | Overlap fraction between declared languages and your intent's language list. |
 | `card_completeness` | Fraction of expected YAML fields actually declared. Documentation-hygiene only — never used as a major rank component. |
 
+Every `SubScore` carries a status (`ok` / `not_applicable` /
+`low_confidence` / `skipped`), so probes that don't apply self-report
+rather than fabricating values.
+
 **Sample-driven probes** — `label_structure`, `schema_fingerprint`,
-plus the **embedding label-intent fit** — land in M1b once `Source`
-plugins implement `stream_sample()`.
-
-Every `SubScore` carries:
-
-- a `value` (when a 0-1 signal makes sense, otherwise `None`),
-- an `n` (rows sampled / count when applicable),
-- a `status` (`ok` / `not_applicable` / `low_confidence` / `skipped`),
-- a list of `Evidence` items — every claim links to specific facts.
-
-The status field is load-bearing: probes that genuinely don't apply to
-a candidate self-report `not_applicable` instead of fabricating a value.
+plus the **embedding label-intent fit** — land in M1b once their
+inputs are available cheaply. Note that today's strategy assessor
+(see §5) already streams real rows for its own use, so the recipe
+draft is curate-ready without those probes shipping.
 
 ---
 
@@ -128,6 +124,26 @@ caveats, and a concrete `transform` spec (column maps, label
 value-maps, filters). The assessor is **conservative-but-creative**:
 stretches get low confidence, and `--min-strategy-confidence` filters
 aggressive reframings out of the draft recipe.
+
+### The assessor sees real rows
+
+Before the LLM call, the assessor streams **8 sample rows** from the
+candidate's source via `Source.stream_rows()`. The prompt's `SAMPLE
+ROWS` section exposes:
+
+- the column names from the first row
+- distinct values seen for any plausible label column
+  (`label`, `labels`, `class`, `category`, `target`)
+- per-row `key=value` lines
+
+The model's `transform` proposal then references **actual** column
+names and label values rather than placeholders like
+`prompt_and_response_or_equivalent`. **Recipes are curate-ready
+straight from `recon`** — no hand-editing of column names required.
+
+If a candidate's source can't be reached or the dataset is gated
+without a token, the assessor gracefully degrades to metadata-only
+input with a note in the prompt and a notice on the result.
 
 ---
 
