@@ -187,4 +187,66 @@ designed accordingly:
 - **"This is not legal advice"** footer on any report touching
   licensing.
 
+
+## 9. How to write a brief
+
+The brief is the only input that drives everything downstream — the
+heuristic parser, the LLM decomposer, the multi-direction search, the
+strategy assessor. **A good brief is a crisp dataset request, not a
+detector design.** Two specs jammed together (the dataset I want AND
+the detector I'll build) confuses every step.
+
+### Bad → good
+
+| ❌ Conflated detector spec | ✅ Crisp dataset request |
+|---|---|
+| _"Find labeled corpora for detecting X — inputs are HTML, outputs are positive vs benign with hard-negatives for Y. We'll train and evaluate a transformer..."_ | _"HTML and Markdown corpora with labelled hidden text — phishing pages, indirect prompt-injection payloads, accessibility-style benigns."_ |
+| _"Find datasets to train a classifier for over-refusal where the model declines benign requests citing safety. Output schema: positive vs benign vs hard-negative."_ | _"Refusal-labeled corpora for customer-support agents — over-refused benign prompts plus correctly-refused harmful prompts."_ |
+
+### What belongs in a brief
+
+- **Labels** you want (positive / benign / hard-negative).
+- **Content shape** (HTML, dialogue, code, image, multi-turn, …).
+- **Domain context** that affects matching (English, customer-support,
+  agent-mediated, code-switched, …).
+
+### What does NOT belong
+
+- Input/output schemas of your downstream model.
+- "We'll train and evaluate" / "the classifier should…"
+- Architecture choices (transformer, LLM-judge, etc.).
+- Long lists of every sub-case — the LLM decomposer's job is to
+  enumerate adjacencies. Don't pre-empt it.
+
+### Length
+
+Aim for **under 250 characters**. The HF lexical search and the LLM
+decomposer both work better on crisp briefs. If you're at 400+
+characters, you've probably described the detector instead of the
+dataset.
+
+### Iterate cheaply
+
+Run `datascout decompose "<brief>"` first — ~5 seconds, one LLM call.
+It prints the directions the model would explore. If the directions
+are wrong, refine the brief and re-run. Once the directions look
+right, run full `datascout recon` (and pass `--decomposition-from
+decomposition.yaml` to skip re-paying for decomposition).
+
+```bash
+# Cheap iteration loop
+datascout decompose "your brief" --out scratch/
+
+# When happy, full recon reusing the directions
+datascout recon "your brief" \
+    --decomposition-from scratch/decomposition.yaml \
+    --out scratch/recon/
+```
+
+### When the parser nudges you
+
+`recon` will surface a hint when the brief looks like a detector
+spec ("describes detector inputs", "describes detector outputs",
+"describes the train/eval plan"). When you see it, tighten the brief.
+
 See [`architecture.md`](architecture.md) for the pipeline detail.

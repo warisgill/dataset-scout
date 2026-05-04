@@ -272,4 +272,75 @@ class HeuristicIntentParser:
         )
 
 
-__all__ = ["HeuristicIntentParser", "IntentParser"]
+__all__ = [
+    "HeuristicIntentParser",
+    "IntentParser",
+    "brief_smell_warnings",
+]
+
+
+# ─── brief smell detector ───────────────────────────────────────────
+
+
+# Patterns that suggest the user is describing a DETECTOR (input/output
+# spec, training/evaluation plan) rather than the dataset they want.
+# When matched, the pipeline surfaces a hint so the user can tighten
+# the brief on the next iteration.
+_SMELL_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"\binputs?\s+(?:are|is)\b", re.IGNORECASE),
+        "describes detector inputs",
+    ),
+    (
+        re.compile(r"\boutputs?\s+(?:are|is)\b|\bouputs?:\s", re.IGNORECASE),
+        "describes detector outputs",
+    ),
+    (
+        re.compile(r"\btrain\s+and\s+(?:eval|evaluate)\b", re.IGNORECASE),
+        "describes the train/eval plan",
+    ),
+    (
+        re.compile(r"\bclassifier(?:\s+for)?\b", re.IGNORECASE),
+        "describes the model architecture",
+    ),
+    (
+        re.compile(r"\b(?:positives|negatives|hard[- ]negatives)\b.*\bvs\b", re.IGNORECASE),
+        "describes positive/benign/hard-negative slots",
+    ),
+)
+
+
+# Length above which a brief is "verbose enough that the search has
+# trouble finding HF candidates without an LLM decomposer." Empirically
+# tuned during the threat-intel walkthrough — ~250 characters is where
+# briefs shift from "compact dataset request" to "kitchen sink."
+_VERBOSE_BRIEF_THRESHOLD = 250
+
+
+def brief_smell_warnings(brief: str) -> list[str]:
+    """Return human-readable hints when the brief looks like a detector
+    spec or a kitchen sink rather than a crisp dataset request.
+
+    Empty list when the brief looks fine. Warnings are formatted to
+    drop straight into a ReconResult.notices list.
+    """
+    warnings: list[str] = []
+    smells: list[str] = []
+    for pattern, label in _SMELL_PATTERNS:
+        if pattern.search(brief):
+            smells.append(label)
+    if smells:
+        warnings.append(
+            "Brief looks like a detector spec rather than a dataset "
+            f"request ({', '.join(smells)}). Tighten to describe just "
+            "the data you want — labels, content shape, domain — and "
+            "let the LLM propose hard-negatives. See "
+            "docs/concepts.md#how-to-write-a-brief."
+        )
+    if len(brief) > _VERBOSE_BRIEF_THRESHOLD:
+        warnings.append(
+            f"Brief is {len(brief)} characters; HF lexical search and "
+            "the LLM decomposer both work better on briefs <250 chars. "
+            "Consider trimming to a crisp dataset description."
+        )
+    return warnings

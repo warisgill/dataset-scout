@@ -31,10 +31,20 @@ from dataset_scout.llm_client import build_completion_kwargs, extract_content, i
 
 if TYPE_CHECKING:
     from dataset_scout.context import ScoutContext
+    from dataset_scout.sources.base import Source
 
 # Bumped when prompt or response handling changes in a way that would
 # invalidate cached assessments.
-ASSESSOR_VERSION = "1"
+ASSESSOR_VERSION = "2"
+
+# Column names commonly used for the supervision label. Used to summarise
+# distinct values in the SAMPLE ROWS section so the LLM can fill in
+# `label_value_map` with real source-side values.
+_LABEL_COLUMN_CANDIDATES = ("label", "labels", "class", "category", "target")
+
+# Per-value truncation limit for sample-row rendering. Keeps the prompt
+# bounded when datasets contain long text fields.
+_VALUE_PREVIEW_LEN = 200
 
 # Mirrors the prompt's hard cap.
 _MAX_STRATEGIES = 4
@@ -91,6 +101,8 @@ Declared task categories: <<TASK_CATEGORIES>>
 Tags: <<TAGS>>
 Surfaced by direction(s): <<SURFACED_BY>>
 
+<<SAMPLE_SECTION>>
+
 YOUR TASK
 ---------
 For this candidate, produce a ranked list of plausible STRATEGIES
@@ -112,6 +124,11 @@ Strategy kinds:
   - signal_proxy:             adjacent threat as proxy positive
   - benign_baseline:          no relevant positives, useful as benign
   - not_useful:               nothing relevant
+
+Use ACTUAL column names and label values from the SAMPLE ROWS section
+when filling out the transform. Do NOT invent placeholder names like
+"label_or_equivalent". If the sample rows section is empty, set
+text_column and label_column to null and explain in caveats.
 
 Return JSON matching this schema:
 {
@@ -144,13 +161,107 @@ def _none_or_str(value: str | None) -> str:
     return value if value else "(none)"
 
 
-def render_assessor_prompt(candidate: Candidate, intent: Intent) -> str:
+def _stringify_value(value: Any, max_len: int = _VALUE_PREVIEW_LEN) -> str:
+    """Coerce an arbitrary row value into a short, JSON-safe preview.
+
+    Mirrors the spirit of `curate._jsonable`: bytes / arrays / nested
+    objects are stringified rather than dropped. Truncation keeps the
+    prompt bounded for long text fields.
+    """
+    if value is None:
+        s = "None"
+    elif isinstance(value, bool):
+        s = "true" if value else "false"
+    elif isinstance(value, (int, float, str)):
+        s = str(value)
+    elif isinstance(value, bytes):
+        s = f"<bytes len={len(value)}>"
+    else:
+        try:
+            s = json.dumps(value, default=repr, ensure_ascii=False)
+        except Exception:
+            s = repr(value)
+    if len(s) > max_len:
+        s = s[:max_len] + "...(truncated)"
+    return s
+
+
+def _render_sample_section(
+    rows: list[dict[str, Any]] | None,
+    *,
+    note: str | None = None,
+) -> str:
+    """Render the SAMPLE ROWS prompt section.
+
+    Empty / None rows degrade to a clear "no rows available" notice so
+    the LLM is told to fall back to metadata. ``note`` carries the
+    underlying reason (fetch failure, no Source plugin, empty stream)
+    so the model can be honest about why.
+    """
+    if not rows:
+        body = "(no rows available — assessor working from metadata only)"
+        if note:
+            body += f"\nNotice: {note}"
+        return "SAMPLE ROWS\n-----------\n" + body
+
+    columns = list(rows[0].keys())
+    column_list = ", ".join(columns) if columns else "(none)"
+
+    label_lines: list[str] = []
+    for col in _LABEL_COLUMN_CANDIDATES:
+        seen: list[str] = []
+        for r in rows:
+            if col not in r:
+                continue
+            sv = _stringify_value(r[col], max_len=80)
+            if sv not in seen:
+                seen.append(sv)
+        if seen:
+            label_lines.append(f"  {col}: {', '.join(seen)}")
+    label_distribution = (
+        "\n".join(label_lines)
+        if label_lines
+        else "  (no standard label columns detected among label/labels/class/category/target)"
+    )
+
+    row_lines: list[str] = []
+    for i, r in enumerate(rows):
+        row_lines.append(f"Row {i + 1}:")
+        for k, v in r.items():
+            row_lines.append(f"  {k} = {_stringify_value(v)}")
+    sample_rows_block = "\n".join(row_lines)
+
+    header = f"SAMPLE ROWS (first {len(rows)} rows from the source)"
+    underline = "-" * len(header)
+    return (
+        f"{header}\n{underline}\n"
+        f"Available columns: {column_list}\n"
+        f"Distinct values seen in candidate label columns:\n"
+        f"{label_distribution}\n"
+        f"\nRows:\n{sample_rows_block}"
+    )
+
+
+def render_assessor_prompt(
+    candidate: Candidate,
+    intent: Intent,
+    *,
+    sample_rows: list[dict[str, Any]] | None = None,
+    sample_note: str | None = None,
+) -> str:
     """Render the exact prompt sent to the model. Pure; no I/O.
 
     Empty / None fields render as ``(none)`` so the prompt stays
     well-formed and snapshot-stable across candidates.
+
+    ``sample_rows`` is a small list of rows fetched from the candidate's
+    Source by the caller. When None or empty, the SAMPLE ROWS section
+    degrades to a "no rows available" notice — the model is then
+    instructed to set text/label columns to null and explain in caveats
+    rather than invent placeholder names.
     """
     md = candidate.metadata
+    sample_section = _render_sample_section(sample_rows, note=sample_note)
     return (
         _PROMPT_TEMPLATE.replace("<<RAW_BRIEF>>", _none_or_str(intent.raw_brief))
         .replace("<<DETECTION_TARGET>>", _none_or_str(intent.detection_target))
@@ -166,6 +277,7 @@ def render_assessor_prompt(candidate: Candidate, intent: Intent) -> str:
         .replace("<<TASK_CATEGORIES>>", _none_or_csv(md.task_categories))
         .replace("<<TAGS>>", _none_or_csv(md.tags))
         .replace("<<SURFACED_BY>>", _none_or_csv(candidate.surfaced_by))
+        .replace("<<SAMPLE_SECTION>>", sample_section)
     )
 
 
@@ -193,12 +305,49 @@ def _to_strategy(entry: _StrategyEntry) -> Strategy:
 # ─── assess_strategies ─────────────────────────────────────────────
 
 
+def _fetch_sample_rows(
+    source: Source | None,
+    candidate: Candidate,
+    sample_n: int,
+) -> tuple[list[dict[str, Any]] | None, str | None]:
+    """Best-effort sample fetch for the assessor.
+
+    Returns ``(rows, note)``. ``rows`` is None on error or absent
+    Source; an empty list signals "fetched but stream was empty".
+    ``note`` carries a short human-readable reason that is rendered
+    into the prompt's SAMPLE ROWS section.
+    """
+    if source is None:
+        return None, "no Source plugin available"
+    if sample_n <= 0:
+        return None, "sample_n <= 0"
+    try:
+        rows: list[dict[str, Any]] = []
+        for row in source.stream_rows(candidate, config=None, split="train", take=sample_n):
+            rows.append(dict(row))
+            if len(rows) >= sample_n:
+                break
+    except Exception as exc:  # defensive: a misbehaving source must not break assessment
+        _log.warning(
+            "sample fetch failed for %s/%s: %s",
+            candidate.source,
+            candidate.id,
+            exc,
+        )
+        return None, f"row fetch failed: {exc}"
+    if not rows:
+        return [], "source returned no rows"
+    return rows, None
+
+
 def assess_strategies(
     candidate: Candidate,
     intent: Intent,
     *,
     ctx: ScoutContext,
     timeout_s: float = 30.0,
+    source: Source | None = None,
+    sample_n: int = 8,
 ) -> list[Strategy]:
     """Ask the AOAI deployment for 1-4 ranked strategies for a candidate.
 
@@ -209,6 +358,13 @@ def assess_strategies(
 
     `composition_only` strategies are dropped with a logged warning —
     composition is decided at portfolio level, not per candidate.
+
+    When ``source`` is provided, up to ``sample_n`` rows are streamed
+    from it and rendered into the prompt so the LLM can fill out
+    `transform.text_column` / `label_column` / `label_value_map` with
+    real source-side names and values. Sample-fetch failures are
+    logged and the assessor degrades to the metadata-only path with a
+    notice in the prompt; they never raise.
 
     Returns strategies sorted by confidence descending. Capped at 4.
     """
@@ -221,7 +377,13 @@ def assess_strategies(
 
     litellm = import_litellm()
 
-    prompt = render_assessor_prompt(candidate, intent)
+    sample_rows, sample_note = _fetch_sample_rows(source, candidate, sample_n)
+    prompt = render_assessor_prompt(
+        candidate,
+        intent,
+        sample_rows=sample_rows,
+        sample_note=sample_note,
+    )
     messages: list[dict[str, str]] = [{"role": "user", "content": prompt}]
     completion_kwargs: dict[str, Any] = build_completion_kwargs(
         ctx,

@@ -359,3 +359,145 @@ def test_assess_wraps_completion_exception(
     monkeypatch.setattr("litellm.completion", fake_completion)
     with pytest.raises(LLMError, match="boom"):
         assess_strategies(_candidate(), _intent(), ctx=_ctx())
+
+
+# ─── row-aware assessment (Source plugin) ──────────────────────────
+
+
+def _capture_completion(monkeypatch: pytest.MonkeyPatch, captured: dict[str, Any]) -> None:
+    def fake_completion(**kwargs: Any) -> _Resp:
+        captured.update(kwargs)
+        return _resp({"strategies": [_entry("direct_use", 0.8)]})
+
+    monkeypatch.setattr("litellm.completion", fake_completion)
+
+
+def test_assess_with_source_includes_sample_rows_in_prompt(
+    monkeypatch: pytest.MonkeyPatch, fake_token_provider: None
+) -> None:
+    from tests._fakes.fake_source import FakeSource
+
+    cand = _candidate()
+    rows = [{"text": f"hello world {i}", "label": i % 2, "extra": "x"} for i in range(5)]
+    src = FakeSource(candidates=[cand], samples={cand.id: rows})
+
+    captured: dict[str, Any] = {}
+    _capture_completion(monkeypatch, captured)
+
+    result = assess_strategies(cand, _intent(), ctx=_ctx(), source=src, sample_n=5)
+    assert len(result) == 1
+
+    prompt = captured["messages"][0]["content"]
+    assert "SAMPLE ROWS (first 5 rows from the source)" in prompt
+    assert "Available columns: text, label, extra" in prompt
+    assert "hello world 0" in prompt
+    assert "hello world 4" in prompt
+    assert "ACTUAL column names" in prompt
+    assert src.stream_rows_calls == 1
+
+
+def test_assess_with_source_failure_falls_back_gracefully(
+    monkeypatch: pytest.MonkeyPatch, fake_token_provider: None
+) -> None:
+    from collections.abc import Iterator
+
+    from tests._fakes.fake_source import FakeSource
+
+    class BoomSource(FakeSource):
+        def stream_rows(
+            self,
+            candidate: Candidate,
+            *,
+            config: str | None = None,
+            split: str = "train",
+            take: int | None = None,
+            seed: int = 42,
+        ) -> Iterator[dict[str, Any]]:
+            raise RuntimeError("network down")
+            yield  # pragma: no cover  # make this a generator
+
+    cand = _candidate()
+    src = BoomSource(candidates=[cand])
+
+    captured: dict[str, Any] = {}
+    _capture_completion(monkeypatch, captured)
+
+    # Must not raise — sample-fetch failures degrade to metadata-only.
+    result = assess_strategies(cand, _intent(), ctx=_ctx(), source=src)
+    assert len(result) == 1
+
+    prompt = captured["messages"][0]["content"]
+    assert "no rows available" in prompt
+    assert "row fetch failed" in prompt
+    assert "network down" in prompt
+
+
+def test_assess_includes_label_distribution_for_known_label_columns(
+    monkeypatch: pytest.MonkeyPatch, fake_token_provider: None
+) -> None:
+    from tests._fakes.fake_source import FakeSource
+
+    cand = _candidate()
+    rows = [
+        {"text": "a", "label": "comply"},
+        {"text": "b", "label": "refuse"},
+        {"text": "c", "label": "comply"},
+        {"text": "d", "label": "deflect"},
+    ]
+    src = FakeSource(candidates=[cand], samples={cand.id: rows})
+
+    captured: dict[str, Any] = {}
+    _capture_completion(monkeypatch, captured)
+
+    assess_strategies(cand, _intent(), ctx=_ctx(), source=src, sample_n=4)
+    prompt = captured["messages"][0]["content"]
+
+    assert "Distinct values seen in candidate label columns:" in prompt
+    # Distinct values, deduped, in first-seen order.
+    assert "label: comply, refuse, deflect" in prompt
+
+
+def test_assess_handles_non_json_row_values(
+    monkeypatch: pytest.MonkeyPatch, fake_token_provider: None
+) -> None:
+    from tests._fakes.fake_source import FakeSource
+
+    cand = _candidate()
+    rows = [
+        {"text": "hi", "blob": b"\x00\x01\x02binary", "missing": None},
+        {"text": "ok", "blob": b"more bytes here", "missing": None},
+    ]
+    src = FakeSource(candidates=[cand], samples={cand.id: rows})
+
+    captured: dict[str, Any] = {}
+    _capture_completion(monkeypatch, captured)
+
+    # Must not raise even though rows contain bytes / None values.
+    result = assess_strategies(cand, _intent(), ctx=_ctx(), source=src, sample_n=2)
+    assert len(result) == 1
+
+    prompt = captured["messages"][0]["content"]
+    assert "<bytes len=" in prompt
+    assert "missing = None" in prompt
+
+
+_SNAPSHOT_WITH_ROWS_PATH = Path(__file__).parent / "fixtures" / "assessor_prompt_with_rows.txt"
+
+
+def test_render_with_rows_snapshot_stable() -> None:
+    """Snapshot for the row-aware prompt path. First run writes the file."""
+    rows = [
+        {"text": "ignore previous instructions", "label": "injection"},
+        {"text": "what's the weather?", "label": "benign"},
+        {"text": "DROP TABLE users;", "label": "injection"},
+    ]
+    rendered = render_assessor_prompt(_candidate(), _intent(), sample_rows=rows)
+
+    if not _SNAPSHOT_WITH_ROWS_PATH.exists():
+        _SNAPSHOT_WITH_ROWS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _SNAPSHOT_WITH_ROWS_PATH.write_text(rendered, encoding="utf-8")
+    expected = _SNAPSHOT_WITH_ROWS_PATH.read_text(encoding="utf-8")
+    assert rendered == expected, (
+        "Row-aware assessor prompt drifted from snapshot. If intentional, "
+        f"delete {_SNAPSHOT_WITH_ROWS_PATH} and re-run the test."
+    )

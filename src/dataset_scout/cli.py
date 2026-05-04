@@ -97,6 +97,17 @@ def recon(
     min_strategy_confidence: Annotated[
         float, typer.Option("--min-strategy-confidence", min=0.0, max=1.0)
     ] = 0.5,
+    decomposition_from: Annotated[
+        Path | None,
+        typer.Option(
+            "--decomposition-from",
+            help=(
+                "Reuse a hand-edited decomposition.yaml instead of paying for "
+                "a fresh LLM decompose call. Lets you iterate on directions "
+                "without re-running the full decompose step."
+            ),
+        ),
+    ] = None,
     out: Annotated[Path, typer.Option("--out", help="Output directory.")] = Path("datascout-out"),
     # Hidden expert escape hatches — not in --help. Useful for debugging
     # and forward compatibility; production users should let the brief +
@@ -111,6 +122,7 @@ def recon(
     ] = False,
 ) -> None:
     from dataset_scout.context import ScoutContext
+    from dataset_scout.decomposition_io import load_decomposition, write_decomposition
     from dataset_scout.errors import DatasetScoutError
     from dataset_scout.pipeline import run_recon
     from dataset_scout.recipe_draft import write_recipe_draft
@@ -130,12 +142,21 @@ def recon(
 
     ctx = ScoutContext.from_env(is_tty=sys.stderr.isatty())
 
+    directions_override = None
+    if decomposition_from is not None:
+        try:
+            directions_override = load_decomposition(decomposition_from)
+        except Exception as e:
+            err.print(f"[red]error:[/red] failed to load decomposition: {e}")
+            raise typer.Exit(code=1) from e
+
     try:
         result = run_recon(
             brief,
             ctx=ctx,
             parser_overrides=overrides,
             explore=not no_explore,
+            directions_override=directions_override,
         )
     except DatasetScoutError as e:
         err.print(f"[red]error:[/red] {e}")
@@ -144,19 +165,102 @@ def recon(
     json_path = write_results_json(result, out)
     md_path = write_recon_report(result, out)
     recipe_path = write_recipe_draft(result, out)
+    decomposition_path = (
+        write_decomposition(result.coverage.decomposition, out)
+        if result.coverage and result.coverage.decomposition
+        else None
+    )
 
     err.print(
         f"[green]✔[/green] {len(result.candidates)} candidate(s) "
         f"from {', '.join(result.sources_searched) or '(no source)'} "
         f"in {result.elapsed_seconds:.2f}s"
     )
-    err.print(f"  - results: {json_path}")
-    err.print(f"  - report:  {md_path}")
+    err.print(f"  - results:       {json_path}")
+    err.print(f"  - report:        {md_path}")
+    if decomposition_path is not None:
+        err.print(f"  - decomposition: {decomposition_path}")
     if recipe_path is not None:
-        err.print(f"  - recipe:  {recipe_path}")
+        err.print(f"  - recipe:        {recipe_path}")
     if result.notices:
         for n in result.notices:
             err.print(f"  [yellow]![/yellow] {n}")
+
+
+# ─── decompose ──────────────────────────────────────────────────────
+
+
+@app.command(help="Cheap brief-iteration: just decompose, don't search or assess.")
+def decompose(
+    brief: Annotated[str, typer.Argument(help="Natural-language brief.")],
+    detection_target: Annotated[str | None, typer.Option("--detection-target")] = None,
+    deployment_context: Annotated[str | None, typer.Option("--deployment-context")] = None,
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Optional path to write decomposition.yaml; otherwise stdout-only.",
+        ),
+    ] = None,
+) -> None:
+    """Run only the LLM decomposition step.
+
+    ~5 seconds and one LLM call. Use this to iterate on a brief
+    cheaply: see what directions the model proposes, refine, repeat.
+    Once happy, pass --decomposition-from to `recon` to skip
+    re-paying the decompose cost.
+    """
+    from dataset_scout.context import ScoutContext
+    from dataset_scout.decompose import decompose_intent, llm_available
+    from dataset_scout.decomposition_io import write_decomposition
+    from dataset_scout.errors import DatasetScoutError, LLMError
+    from dataset_scout.intent import HeuristicIntentParser
+
+    ctx = ScoutContext.from_env(is_tty=sys.stderr.isatty())
+    if not llm_available(ctx):
+        err.print(
+            "[red]error:[/red] Azure OpenAI is not configured. "
+            "Set AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_DEPLOYMENT and "
+            "run `az login`."
+        )
+        raise typer.Exit(code=1)
+
+    overrides: dict[str, object] = {}
+    if detection_target:
+        overrides["detection_target"] = detection_target
+    if deployment_context:
+        overrides["deployment_context"] = deployment_context
+    intent = HeuristicIntentParser().parse(brief, **overrides)
+
+    try:
+        directions = decompose_intent(intent, ctx=ctx)
+    except (LLMError, DatasetScoutError) as e:
+        err.print(f"[red]error:[/red] {e}")
+        raise typer.Exit(code=1) from e
+
+    if not directions:
+        err.print("[yellow]The model returned no decomposition directions.[/yellow]")
+        return
+
+    # Print to stdout so it pipes cleanly.
+    typer.echo(f"# Decomposition for: {brief}\n")
+    for d in directions:
+        typer.echo(f"## {d.name}\n")
+        typer.echo(f"{d.rationale}\n")
+        if d.keywords:
+            typer.echo(f"- keywords: `{', '.join(d.keywords)}`")
+        if d.expected_finds:
+            typer.echo(f"- expected: {d.expected_finds}")
+        typer.echo("")
+
+    if out is not None:
+        path = write_decomposition(directions, out)
+        if path is not None:
+            err.print(f"[green]✔[/green] {len(directions)} direction(s) written to {path}")
+            err.print(
+                "  Pass [cyan]--decomposition-from " + str(path) + "[/cyan] to "
+                "[cyan]datascout recon[/cyan] to reuse."
+            )
 
 
 # ─── inspect ────────────────────────────────────────────────────────
@@ -227,6 +331,72 @@ def inspect(
     if result.notices:
         for n in result.notices:
             err.print(f"[dim]note:[/dim] {n}")
+
+
+# ─── compose ────────────────────────────────────────────────────────
+
+
+@app.command(help="Compose multiple recipes into one merged corpus blueprint.")
+def compose(
+    recipes: Annotated[
+        list[Path],
+        typer.Argument(
+            help="Two or more recipe.yaml files to merge.",
+            metavar="RECIPE...",
+        ),
+    ],
+    out: Annotated[
+        Path,
+        typer.Option("--out", help="Path to write the merged recipe.yaml."),
+    ],
+    intent_brief: Annotated[
+        str | None,
+        typer.Option(
+            "--intent-brief",
+            help="Override the merged intent's brief (default: keep the first input's).",
+        ),
+    ] = None,
+) -> None:
+    """Merge multiple recipes (e.g. from multi-detection-program runs).
+
+    Components dedupe by (source, source_id) — higher
+    `strategy_confidence` wins on conflict. Output recipe is fed
+    straight to `datascout curate`.
+    """
+    from dataset_scout.curate import load_recipe
+    from dataset_scout.errors import DatasetScoutError
+    from dataset_scout.recipe import RecipeIntent
+    from dataset_scout.recipe_compose import compose_recipes, write_composed_recipe
+
+    if len(recipes) < 2:
+        err.print(
+            f"[red]error:[/red] compose needs at least two input recipes (got {len(recipes)})."
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        loaded = [load_recipe(p) for p in recipes]
+    except Exception as e:
+        err.print(f"[red]error:[/red] failed to load a recipe: {e}")
+        raise typer.Exit(code=1) from e
+
+    intent_override = None
+    if intent_brief is not None:
+        intent_override = RecipeIntent(brief=intent_brief)
+
+    try:
+        merged, notices = compose_recipes(loaded, intent_override=intent_override)
+    except (ValueError, DatasetScoutError) as e:
+        err.print(f"[red]error:[/red] {e}")
+        raise typer.Exit(code=1) from e
+
+    target = write_composed_recipe(merged, out)
+    err.print(
+        f"[green]✔[/green] merged {len(loaded)} recipe(s) into {target} — "
+        f"{len(merged.components)} components, {len(merged.declined)} declined"
+    )
+    for n in notices:
+        err.print(f"  [yellow]![/yellow] {n}")
 
 
 # ─── curate ─────────────────────────────────────────────────────────
@@ -339,3 +509,27 @@ def sources_disable(name: str) -> None:
 
 if __name__ == "__main__":  # pragma: no cover
     app()
+
+
+# ─── tour ───────────────────────────────────────────────────────────
+
+
+@app.command(help="30-second demo with canned data — no AOAI or HF access required.")
+def tour(
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Optional path to also persist the demo artefacts (results.json / recipe.draft.yaml / decomposition.yaml).",
+        ),
+    ] = None,
+) -> None:
+    """Render a fully-populated tour report to stdout."""
+    from dataset_scout.tour import render_tour
+
+    typer.echo(render_tour(out_dir=out))
+    if out is not None:
+        err.print(
+            f"[green]✔[/green] tour artefacts also written to {out} — "
+            "open report.md / recipe.draft.yaml / decomposition.yaml to explore."
+        )

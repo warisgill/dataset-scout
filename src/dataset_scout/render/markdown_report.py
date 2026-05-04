@@ -47,7 +47,29 @@ def render_recon_report(result: ReconResult) -> str:
     llm_runtime_error = any("Azure OpenAI was configured but" in n for n in result.notices)
     has_strategies = _has_strategies(result)
     has_decomposition = bool(result.coverage and result.coverage.decomposition)
+    has_gaps = bool(result.coverage and result.coverage.semantic_gaps)
     notable_gaps = bool(result.coverage and len(result.coverage.semantic_gaps) >= 2)
+
+    # Sparse-coverage mode: HF returned very little but the LLM
+    # decomposition + gaps are populated. The decomposition + gaps
+    # ARE the deliverable in this case; lead with them. (Recommendation
+    # E from the threat-intel walkthrough.)
+    sparse_coverage = (
+        has_decomposition
+        and has_gaps
+        and len(result.candidates) <= 5
+        and not metadata_only
+        and not llm_runtime_error
+    )
+    # No-direct-fit signal: LLM ran, but no candidate scored direct_use.
+    # Worth flagging so users don't expect ground-truth corpora.
+    no_direct_fits = bool(
+        has_strategies
+        and not any(
+            (sc.best_strategy is not None and sc.best_strategy.kind.value == "direct_use")
+            for sc in result.candidates
+        )
+    )
 
     buf.write("# dataset-scout recon report\n\n")
     if metadata_only:
@@ -65,6 +87,22 @@ def render_recon_report(result: ReconResult) -> str:
             "> (deployment name, token, network, or quota — see notices\n"
             "> below). Decomposition, strategy assessment, and coverage\n"
             "> gaps were skipped.\n\n"
+        )
+    elif sparse_coverage:
+        buf.write(
+            "> 🗺️ **Sparse-coverage territory.**  \n"
+            f"> HuggingFace returned {len(result.candidates)} candidate(s) "
+            "for this brief. The decomposition + coverage gaps below\n"
+            "> are the actual sourcing roadmap — most of the data you need\n"
+            "> for this detection program lives outside HF.\n\n"
+        )
+    elif no_direct_fits:
+        buf.write(
+            "> 🧩 **No direct-fit corpora — every candidate is a reframing.**  \n"
+            "> Strategy assessment ran successfully; review the reframings\n"
+            "> (signal_proxy / cross_class_repurposing / benign_baseline) before\n"
+            "> committing. Direct ground-truth corpora for this brief don't\n"
+            "> appear to exist on HuggingFace yet.\n\n"
         )
     elif has_strategies:
         n_dirs = len(result.coverage.decomposition) if result.coverage else 0
@@ -98,16 +136,20 @@ def render_recon_report(result: ReconResult) -> str:
         buf.write(f"**Threat families:** {', '.join(intent.threat_families)}\n\n")
     buf.write(f"**Languages requested:** {', '.join(intent.languages)}\n\n")
 
-    # ─── Coverage gaps (lead when notable) ─────────────────────
-    if notable_gaps and result.coverage:
-        buf.write("## Coverage gaps\n\n")
+    # ─── Sourcing roadmap (LEAD section when gaps are present) ──
+    # Per recommendation A: gaps + decomposition together are the
+    # primary deliverable for novel briefs. Lead with them.
+    if has_gaps and result.coverage and (notable_gaps or sparse_coverage):
+        buf.write("## Sourcing roadmap\n\n")
         buf.write(
-            "The candidates above don't fully cover what you described. Concrete next steps:\n\n"
+            "Where the data is — and isn't. The LLM identified specific aspects\n"
+            "of your brief that the candidate set doesn't cover, with concrete\n"
+            "next steps:\n\n"
         )
         for gap in result.coverage.semantic_gaps:
-            buf.write(f"- **{gap.aspect}** — {gap.description}\n")
-            buf.write(f"  - *Suggestion:* {gap.suggestion}\n")
-        buf.write("\n")
+            buf.write(f"### {gap.aspect}\n\n")
+            buf.write(f"{gap.description}\n\n")
+            buf.write(f"**→ Next step:** {gap.suggestion}\n\n")
 
     # ─── Decomposition audit ────────────────────────────────────
     if has_decomposition and result.coverage:
@@ -167,7 +209,14 @@ def render_recon_report(result: ReconResult) -> str:
     for i, sc in enumerate(result.candidates, start=1):
         _render_candidate(buf, i, sc)
 
-    if result.coverage and result.coverage.semantic_gaps and not notable_gaps:
+    # When gaps exist but weren't notable enough to lead the report,
+    # render them after candidates.
+    if (
+        result.coverage
+        and result.coverage.semantic_gaps
+        and not notable_gaps
+        and not sparse_coverage
+    ):
         buf.write("## Coverage gaps\n\n")
         buf.write("Aspects worth augmenting:\n\n")
         for gap in result.coverage.semantic_gaps:

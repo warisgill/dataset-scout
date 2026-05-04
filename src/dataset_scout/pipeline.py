@@ -29,7 +29,7 @@ from dataset_scout.core import (
 )
 from dataset_scout.errors import LLMError, SourceUnavailableError
 from dataset_scout.events import ProgressEvent, ProgressEventKind
-from dataset_scout.intent import HeuristicIntentParser
+from dataset_scout.intent import HeuristicIntentParser, brief_smell_warnings
 from dataset_scout.probes import cheap_probes
 from dataset_scout.probes.base import Probe, ProbeRegistry
 from dataset_scout.sources.base import Budget
@@ -133,6 +133,7 @@ def run_recon(
     probes: ProbeRegistry | None = None,
     sources: list[Source] | None = None,
     explore: bool = True,
+    directions_override: list[DecompositionDirection] | None = None,
 ) -> ReconResult:
     """Run the discovery pipeline and return a `ReconResult`.
 
@@ -154,6 +155,10 @@ def run_recon(
     explore
         If False, skip decomposition unconditionally (debug). The CLI
         wires this to a hidden `--no-explore` flag.
+    directions_override
+        Use the supplied DecompositionDirection list instead of calling
+        the LLM. Lets `--decomposition-from <path>` reuse a hand-edited
+        decomposition.yaml without paying for a fresh LLM call.
     """
     overrides = parser_overrides or {}
     notices: list[str] = []
@@ -174,10 +179,38 @@ def run_recon(
         languages=list(intent.languages),
     )
 
+    # Surface brief-style hints (detector-spec / kitchen-sink patterns).
+    for warning in brief_smell_warnings(brief):
+        notices.append(warning)
+
     directions: list[DecompositionDirection] = []
     use_llm = explore
     llm_runtime_error: bool = False  # True iff configured but call failed
-    if use_llm:
+
+    # If the caller provided directions (e.g. --decomposition-from),
+    # use them verbatim — skip the decompose LLM call entirely.
+    # The strategy assessor + coverage still depend on llm_available(ctx).
+    if directions_override is not None:
+        directions = list(directions_override)
+        for d in directions:
+            _emit(
+                ProgressEventKind.DIRECTION_PROPOSED,
+                stage="decompose",
+                name=d.name,
+                keywords=list(d.keywords),
+                source="reused-from-file",
+            )
+        # Strategy assessment / coverage still need AOAI; if it's not
+        # configured we degrade quietly and search-only.
+        from dataset_scout.decompose import llm_available
+
+        if not llm_available(ctx):
+            use_llm = False
+            notices.append(
+                "Reused decomposition.yaml; Azure OpenAI is not configured "
+                "so strategy assessment and coverage gaps are skipped."
+            )
+    elif use_llm:
         from dataset_scout.decompose import decompose_intent, llm_available
 
         if not llm_available(ctx):
@@ -207,9 +240,9 @@ def run_recon(
             )
 
     # Only emit the "AOAI not configured" notice when AOAI genuinely
-    # isn't configured. If the call failed at runtime, we already have
-    # the specific error + LLM_RUNTIME_HINT in the notices.
-    if not use_llm and not llm_runtime_error:
+    # isn't configured AND the user didn't supply pre-computed directions
+    # (in which case we already emitted a more specific notice above).
+    if not use_llm and not llm_runtime_error and directions_override is None:
         notices.append(METADATA_ONLY_NOTICE)
 
     if sources is None:
@@ -248,9 +281,17 @@ def run_recon(
     )
 
     if not candidates:
-        notices.append(
-            "No candidates returned. Try broadening the brief or check source connectivity."
-        )
+        if directions:
+            notices.append(
+                "No HuggingFace candidates matched the brief or any decomposition "
+                "direction. The decomposition + coverage gaps in the report are "
+                "your sourcing roadmap — for novel briefs, the data often lives "
+                "outside HF (academic repositories, vendor telemetry, web archives)."
+            )
+        else:
+            notices.append(
+                "No candidates returned. Try broadening the brief or check source connectivity."
+            )
 
     _emit(ProgressEventKind.STAGE_STARTED, stage="probe")
     scorecards: list[Scorecard] = []
@@ -277,6 +318,7 @@ def run_recon(
         from dataset_scout.strategy import assess_strategies
 
         shortlist = select_top_for_assessor(scorecards)
+        source_index: dict[str, Source] = {s.name: s for s in sources}
         _emit(
             ProgressEventKind.STAGE_STARTED,
             stage="assess",
@@ -284,7 +326,12 @@ def run_recon(
         )
         for sc in shortlist:
             try:
-                sc.strategies = assess_strategies(sc.candidate, intent, ctx=ctx)
+                sc.strategies = assess_strategies(
+                    sc.candidate,
+                    intent,
+                    ctx=ctx,
+                    source=source_index.get(sc.candidate.source),
+                )
             except LLMError as exc:
                 notices.append(
                     f"strategy assessment skipped for {sc.candidate.source}:"
