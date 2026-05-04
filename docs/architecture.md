@@ -276,7 +276,7 @@ prompts are **snapshot-tested** — drift surfaces as a PR diff.
 | M4a | ✅ done | `curate` preview slice — recipe → JSONL + lockfile + manifest + report + fingerprint + usage. |
 | M4b | ✅ done | **MinHash dedup + leakage-aware splitter + filter DSL** — flips `recipe.lock.yaml` `audit_readiness: preview → ready`. Filter expressions sandboxed via `filter_dsl.py`; near-dup clusters (Jaccard ≥ 0.8 over char 5-grams) routed to a single split. |
 | M4c | ✅ done | **Per-component soft failures** — gated datasets, missing configs, bad splits, parse errors, and unknown errors are classified, recorded under `failed_components` in the lockfile + report with actionable hints, and curate continues with the rest. Pipeline only fails if every component errors. |
-| M5 | 🔄 next | real-brief validation — drive the loop end-to-end on a handful of unfamiliar briefs, harden the rough edges that surface |
+| M5 | 🔄 in progress | **Real-brief validation + edge hardening.** Each unfamiliar brief surfaces 2–4 ergonomic edges; we close them in the same session. Closed so far: `decompose --out` file/dir routing, decomposition-keyword precision (10× usable strategies on a frontier brief, 0 off-topic noise), `take: all` materialization-time blowup (25min → 62s end-to-end via auto-cap + `--max-rows-per-component`). |
 
 Detail in [`docs/concepts.md`](concepts.md) and the (archived)
 TECH_DESIGN spec.

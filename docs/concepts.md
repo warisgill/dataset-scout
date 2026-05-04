@@ -215,6 +215,27 @@ under `failed_components` in `recipe.lock.yaml` and surfaced in
 components did succeed. The pipeline only fails hard if every
 component errors out (in which case there's nothing useful to write).
 
+### `take` and the auto-cap
+
+The strategy assessor sets `transform.take: "all"` by default since
+it can't predict dataset size. For heavy corpora (think Stack /
+GitHub-scale code datasets) that means tens of thousands of rows
+per component, which can stretch a first-pass `curate` into tens of
+minutes.
+
+`recipe.draft.yaml` therefore **auto-caps `take: "all"` to 5000 rows**
+at draft-write time, with a caveat on each capped component
+explaining what was capped and how to lift it. To materialise the
+full component, edit `take: 5000` back to `take: all` (or any
+larger integer). To go the other way for one run without editing
+the recipe, pass `--max-rows-per-component N` to `curate` — it
+lowers the recipe's value but never raises it (the recipe stays
+the source of truth).
+
+This is the difference between "first sanity-check run" (cap on,
+~minutes) and "production-blend materialisation" (cap off,
+hours-but-once).
+
 ---
 
 ## 8. Voice
