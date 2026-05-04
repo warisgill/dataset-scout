@@ -217,23 +217,49 @@ class HuggingFaceSource:
     ) -> Iterator[Candidate]:
         """Yield candidates from the original Intent plus each decomposition direction.
 
+        The yield order is **round-robin across queries**, not
+        sequential. Without round-robin, a high-recall first direction
+        (e.g. "prompt injection" returning 50+ datasets) would saturate
+        the candidate budget in the pipeline and starve every later
+        direction. With round-robin, each query contributes one
+        candidate per pass, so a 50-candidate budget split across 1
+        Intent query + 6 directions x 3 keywords (~19 queries) lets
+        every direction land 2-3 hits.
+
         Each candidate's `surfaced_by` is set to `[direction.name]` for
         direction-derived hits and `[]` for hits from the original Intent.
         Candidates may appear in multiple direction queries; the pipeline
         is responsible for deduping and merging surfaced_by lists.
         """
-        # Always search the original Intent first (surfaced_by=[]).
+        # Materialise all per-query result lists upfront so we can
+        # interleave them. This means we issue all the API calls in
+        # one batch, then yield round-robin across the results. The
+        # alternative (lazy iterators) would require advancing each
+        # `list_datasets` call one item at a time, which the HF API
+        # doesn't support cleanly.
+        per_query_results: list[list[Candidate]] = []
+
         original_query = _build_search_query(intent)
         if original_query:
-            yield from self._search_one(original_query, surfaced_by=[])
+            per_query_results.append(list(self._search_one(original_query, surfaced_by=[])))
 
-        # Then each decomposition direction: one query per keyword (HF's
-        # lexical search needs short individual terms; concatenated
-        # phrases return very few hits).
         for direction in directions:
             for query in _direction_queries(direction):
                 if query:
-                    yield from self._search_one(query, surfaced_by=[direction.name])
+                    per_query_results.append(
+                        list(self._search_one(query, surfaced_by=[direction.name]))
+                    )
+
+        # Round-robin yield: one candidate from each query per pass.
+        idx = 0
+        any_left = True
+        while any_left:
+            any_left = False
+            for results in per_query_results:
+                if idx < len(results):
+                    yield results[idx]
+                    any_left = True
+            idx += 1
 
     def _search_one(self, query: str, *, surfaced_by: list[str]) -> Iterator[Candidate]:
         infos = self._api.list_datasets(search=query, limit=self._limit, full=True)

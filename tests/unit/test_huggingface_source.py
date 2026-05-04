@@ -233,3 +233,133 @@ def test_guess_spdx_returns_none_for_unknowns():
     assert guess_spdx("other") is None
     assert guess_spdx("see license file") is None
     assert guess_spdx("definitely not a real license") is None
+
+
+# ─── M5: round-robin search fairness ────────────────────────────────
+
+
+def test_search_round_robins_across_directions(monkeypatch):
+    """Without round-robin, a high-recall first direction would
+    saturate the candidate budget and starve every later direction.
+    Verify that yield order interleaves: pass 1 yields one from each
+    query, pass 2 yields one from each remaining query, etc.
+    """
+    from dataset_scout.core import DecompositionDirection, Intent
+    from dataset_scout.sources.base import Budget
+    from dataset_scout.sources.huggingface import HuggingFaceSource
+
+    # Fake `_search_one` so we don't hit the network. Each (query, sb)
+    # tuple yields a distinct sequence of candidate ids.
+    canned = {
+        "raw brief": [f"intent_{i}" for i in range(10)],
+        "kw_a1": [f"a1_{i}" for i in range(10)],
+        "kw_a2": [f"a2_{i}" for i in range(10)],
+        "kw_b1": [f"b1_{i}" for i in range(10)],
+        "kw_b2": [f"b2_{i}" for i in range(10)],
+    }
+
+    src = HuggingFaceSource.__new__(HuggingFaceSource)
+    src._api = None  # type: ignore[attr-defined]
+    src._limit = 50  # type: ignore[attr-defined]
+
+    def fake_search_one(query: str, *, surfaced_by: list[str]):
+        for cid in canned.get(query, []):
+            from dataset_scout.core import Candidate, CandidateMetadata
+
+            yield Candidate(
+                source="huggingface",
+                id=cid,
+                revision="r",
+                metadata=CandidateMetadata(),
+                surfaced_by=list(surfaced_by),
+            )
+
+    monkeypatch.setattr(src, "_search_one", fake_search_one)
+    monkeypatch.setattr(
+        "dataset_scout.sources.huggingface._build_search_query",
+        lambda intent: "raw brief",
+    )
+    monkeypatch.setattr(
+        "dataset_scout.sources.huggingface._direction_queries",
+        lambda d: ["kw_a1", "kw_a2"] if d.name == "dir_a" else ["kw_b1", "kw_b2"],
+    )
+
+    intent = Intent(raw_brief="raw brief")
+    directions = [
+        DecompositionDirection(name="dir_a", rationale="r", keywords=[]),
+        DecompositionDirection(name="dir_b", rationale="r", keywords=[]),
+    ]
+
+    yielded = list(src.search(intent, directions, budget=Budget()))
+
+    # The first 5 yields should each come from a different (query, surfaced_by)
+    # source, exactly once per query — this is the fairness invariant.
+    first_pass_sb = [tuple(c.surfaced_by) for c in yielded[:5]]
+    assert sorted(first_pass_sb) == sorted([(), ("dir_a",), ("dir_a",), ("dir_b",), ("dir_b",)]), (
+        f"first round didn't visit every query exactly once: {first_pass_sb}"
+    )
+
+    # Within the first 5, the intent-derived candidate (surfaced_by=[])
+    # should be intent_0; each direction's first keyword is in the same
+    # pass. Idempotent across the rest of the rounds.
+    intent_first_round = next(c for c in yielded[:5] if not c.surfaced_by)
+    assert intent_first_round.id == "intent_0"
+
+
+def test_search_round_robin_handles_unequal_query_lengths(monkeypatch):
+    """When some queries return fewer results than others, round-robin
+    keeps draining the longer ones after the shorter ones exhaust."""
+    from dataset_scout.core import DecompositionDirection, Intent
+    from dataset_scout.sources.base import Budget
+    from dataset_scout.sources.huggingface import HuggingFaceSource
+
+    canned = {
+        "raw brief": [f"intent_{i}" for i in range(5)],
+        "kw_short": [f"short_{i}" for i in range(2)],  # only 2
+        "kw_long": [f"long_{i}" for i in range(8)],  # 8
+    }
+
+    src = HuggingFaceSource.__new__(HuggingFaceSource)
+    src._api = None  # type: ignore[attr-defined]
+    src._limit = 50  # type: ignore[attr-defined]
+
+    def fake_search_one(query: str, *, surfaced_by: list[str]):
+        for cid in canned.get(query, []):
+            from dataset_scout.core import Candidate, CandidateMetadata
+
+            yield Candidate(
+                source="huggingface",
+                id=cid,
+                revision="r",
+                metadata=CandidateMetadata(),
+                surfaced_by=list(surfaced_by),
+            )
+
+    monkeypatch.setattr(src, "_search_one", fake_search_one)
+    monkeypatch.setattr(
+        "dataset_scout.sources.huggingface._build_search_query",
+        lambda intent: "raw brief",
+    )
+    monkeypatch.setattr(
+        "dataset_scout.sources.huggingface._direction_queries",
+        lambda d: ["kw_short"] if d.name == "dir_short" else ["kw_long"],
+    )
+
+    intent = Intent(raw_brief="raw brief")
+    directions = [
+        DecompositionDirection(name="dir_short", rationale="r", keywords=[]),
+        DecompositionDirection(name="dir_long", rationale="r", keywords=[]),
+    ]
+
+    yielded = list(src.search(intent, directions, budget=Budget()))
+
+    # All 15 candidates should be yielded.
+    assert len(yielded) == 5 + 2 + 8
+
+    # The short query exhausts after 2 rounds; the longer ones keep going.
+    short_count = sum(1 for c in yielded if c.surfaced_by == ["dir_short"])
+    long_count = sum(1 for c in yielded if c.surfaced_by == ["dir_long"])
+    intent_count = sum(1 for c in yielded if not c.surfaced_by)
+    assert short_count == 2
+    assert long_count == 8
+    assert intent_count == 5
