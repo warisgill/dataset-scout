@@ -83,7 +83,9 @@ src/dataset_scout/
 ├── recipe_draft.py         recipe.draft.yaml emission
 ├── recipe_compose.py       merge multiple recipes (datascout compose)
 ├── inspect_.py             single-candidate deep-dive
-├── curate.py               recipe → corpus orchestrator (M4a preview)
+├── curate.py               recipe → corpus orchestrator (audit-ready)
+├── filter_dsl.py           sandboxed filter expression compiler
+├── dedup.py                MinHash + LSH + leakage-aware splitter
 ├── tour.py                 canned demo for `datascout tour`
 ├── stats.py                Wilson score CI helper
 ├── pipeline.py             run_recon orchestrator
@@ -271,9 +273,9 @@ prompts are **snapshot-tested** — drift surfaces as a PR diff.
 | M2b | ✅ done | strategy assessor, coverage report, recipe.draft.yaml, two-stage shortlist, ranked report |
 | **Wow loop** | ✅ done | `tour` (no-setup demo), `decompose` (cheap brief iteration), `--decomposition-from` reuse, **row-aware strategy assessor** (recipes ship with REAL columns), `compose` (multi-recipe merge), sourcing-roadmap-led report, brief-smell hints |
 | M3 | ✅ done | `inspect` deep-dive — schema + Wilson-CI label distribution + length stats + license + strategy assessment |
-| M4a | ✅ done | `curate` preview slice — recipe → JSONL + lockfile + manifest + report + fingerprint + usage. Hash-mod split (NOT leakage-aware), filter DSL hard-fails. |
-| M4b | 🔄 next | MinHash dedup + leakage-aware splitter + filter DSL — flips `recipe.lock.yaml` `audit_readiness: preview → ready` |
-| M5 | ⏳ | real-brief validation, ship 1.0 |
+| M4a | ✅ done | `curate` preview slice — recipe → JSONL + lockfile + manifest + report + fingerprint + usage. |
+| M4b | ✅ done | **MinHash dedup + leakage-aware splitter + filter DSL** — flips `recipe.lock.yaml` `audit_readiness: preview → ready`. Filter expressions sandboxed via `filter_dsl.py`; near-dup clusters (Jaccard ≥ 0.8 over char 5-grams) routed to a single split. |
+| M5 | 🔄 next | real-brief validation, ship 1.0 |
 
 Detail in [`docs/concepts.md`](concepts.md) and the (archived)
 TECH_DESIGN spec.

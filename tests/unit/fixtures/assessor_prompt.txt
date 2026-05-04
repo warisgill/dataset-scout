@@ -52,6 +52,25 @@ when filling out the transform. Do NOT invent placeholder names like
 "label_or_equivalent". If the sample rows section is empty, set
 text_column and label_column to null and explain in caveats.
 
+The `filter` field, when non-null, MUST be a sandboxed expression
+that evaluates to a boolean per row. It is NOT a free-text note.
+Use real column names from the sample rows. Allowed primitives:
+  - column references (bare names, e.g. `label`, `text`)
+  - comparison operators: == != < <= > >= in
+  - boolean operators: and or not
+  - parentheses
+  - functions: len(...), contains_pattern(col, regex), lower(...),
+    startswith(col, prefix), endswith(col, suffix), int(...), str(...)
+NOT allowed: attribute access (`.upper()`), subscript (`x[0]`),
+lambdas, comprehensions, prose, configuration directives.
+Examples of GOOD filter values:
+  - "label == 'jailbreak'"
+  - "len(text) > 50 and category in ('prompt_injection', 'override')"
+  - "contains_pattern(prompt, '(?i)ignore previous')"
+If you only need a subset based on a config/split that is NOT a row
+column, set filter to null and describe the constraint in caveats —
+do not put prose in the filter field.
+
 Return JSON matching this schema:
 {
   "strategies": [

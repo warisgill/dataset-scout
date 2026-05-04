@@ -190,10 +190,11 @@ overhead.
 - **Reproducibility is contingent.** `recipe.lock.yaml` pins
   revisions and content hashes. If upstreams delete the data, only an
   archive (a future feature) makes the blend reproducible standalone.
-- **`curate` is currently `audit_readiness: preview`.** Hash-mod
-  splits + no MinHash dedup + filter expressions hard-fail until M4b
-  ships them. The lockfile says so explicitly. Don't ship a defended
-  detector trained on a preview corpus without acknowledging it.
+- **`curate` is audit-ready.** MinHash dedup keeps near-duplicates
+  in the same split, filter DSL applies to recipes, lockfile records
+  `audit_readiness: ready` with full dedup parameters. Still: a
+  defensible *corpus* doesn't excuse a sloppy threat model — read
+  the report and `inspect` before you trust it.
 - **Not legal advice.** License signals are an SPDX best-effort
   guess; read the upstream card before redistributing.
 

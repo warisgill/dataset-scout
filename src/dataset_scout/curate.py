@@ -1,10 +1,9 @@
-"""Curate orchestrator (M4a — preview slice).
+"""Curate orchestrator (M4b — audit-ready).
 
 Recipe → materialised JSONL corpus + lockfile + manifest + report +
-fingerprint + usage. Per duck guidance the slice is **preview**
-quality: hash-mod splits, no MinHash dedup, filter DSL hard-fails. The
-output report carries a prominent "not audit-ready" banner; M4b adds
-the leakage-aware splitter, dedup, and filter DSL.
+fingerprint + usage. M4b lands the leakage-aware splitter (MinHash +
+LSH grouping) and the minimal filter expression DSL, flipping
+`recipe.lock.yaml` `audit_readiness` from `preview` to `ready`.
 
 Public API:
 
@@ -18,7 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -130,25 +129,34 @@ def load_recipe(path: Path) -> Recipe:
     return Recipe.model_validate(data)
 
 
-# ─── filter handling (M4a: hard-fail) ───────────────────────────────
+# ─── filter handling (M4b: minimal expression DSL) ──────────────────
 
 
-def _validate_no_filters(components: list[RecipeComponent]) -> None:
-    """Per duck guidance: silent no-op on filters destroys audit trail.
+def _compile_component_filter(c: RecipeComponent) -> Callable[[dict[str, Any]], bool] | None:
+    """Compile a component's filter expression to a callable, or None.
 
-    Until the filter DSL lands (M4b), curate hard-fails on any non-null
-    filter rather than ignoring it.
+    Compile errors (disallowed syntax / unknown function) raise
+    `DatasetScoutError` with the offending component id; the user
+    must fix the recipe.
     """
-    offenders: list[str] = []
-    for c in components:
-        if c.transform.filter:
-            offenders.append(f"{c.id} ({c.transform.filter!r})")
-    if offenders:
+    if not c.transform.filter:
+        return None
+    from dataset_scout.filter_dsl import FilterCompileError, compile_filter
+
+    try:
+        return compile_filter(c.transform.filter)
+    except FilterCompileError as exc:
         raise DatasetScoutError(
-            "Recipe contains components with non-null `filter` strings, "
-            "but the filter DSL is not implemented yet. Either drop the "
-            "filter or wait for M4b. Offending components: " + ", ".join(offenders)
-        )
+            f"component {c.id!r} has an invalid filter expression: {exc}. "
+            f"Offending expression: {c.transform.filter!r}"
+        ) from exc
+
+
+def _precompile_filters(
+    components: list[RecipeComponent],
+) -> dict[str, Any]:
+    """Validate every component's filter at the top of curate."""
+    return {c.id: _compile_component_filter(c) for c in components}
 
 
 # ─── composition cross-references ────────────────────────────────────
@@ -276,12 +284,18 @@ def _materialize_component(
     *,
     source: Source,
     threat_family: str | None,
+    filter_fn: Any = None,
 ) -> Iterator[NormalizedRecord]:
     """Stream rows for one component and yield NormalizedRecord per row.
 
     The `take` parameter on the recipe transform is honored. Rows whose
     label_value_map mapping is missing for the source-side label are
     silently dropped (the user can add to the map and re-run).
+
+    `filter_fn`, when provided, is the compiled filter expression. Rows
+    that fail the filter are skipped before the transform runs — this
+    is critical for `subset_extraction`, where we materialize only the
+    rows the strategy describes.
     """
     candidate = _component_to_candidate(component)
     take = component.transform.take
@@ -293,6 +307,12 @@ def _materialize_component(
         take=take_int,
     )
     for i, row in enumerate(rows):
+        if filter_fn is not None:
+            try:
+                if not filter_fn(row):
+                    continue
+            except Exception:
+                continue
         rec = _row_to_record(component, row, i, threat_family)
         if rec is not None:
             yield rec
@@ -380,7 +400,7 @@ def _resolve_label_kind(value: str | None) -> LabelKind:
         return LabelKind.GROUND_TRUTH
 
 
-# ─── splitter (M4a: hash-mod) ────────────────────────────────────────
+# ─── splitter (M4b: leakage-aware via MinHash + LSH) ────────────────
 
 
 def _split_records(
@@ -389,44 +409,22 @@ def _split_records(
     *,
     seed: int,
     leakage_keys: list[str],
-) -> dict[str, list[NormalizedRecord]]:
-    """Hash-mod split — deterministic, NOT leakage-aware.
+) -> tuple[dict[str, list[NormalizedRecord]], dict[str, Any]]:
+    """Leakage-aware split using MinHash + LSH.
 
-    `recipe.lock.yaml` will record `split_method: "hash_mod"` so the
-    audit trail is honest. M4b's MinHash + group-aware splitter
-    replaces this without breaking the recipe shape.
+    Returns (splits, dedup_stats). `dedup_stats` carries the cluster
+    counts and parameters used so they can land in `recipe.lock.yaml`.
+    Near-duplicate rows always end up in the SAME split — eval signal
+    can't leak into training via paraphrases.
     """
-    splits: dict[str, list[NormalizedRecord]] = {k: [] for k in proportions}
-    # Build cumulative thresholds in canonical order.
-    cumulative: list[tuple[str, float]] = []
-    running = 0.0
-    for name in ("train", "val", "test"):
-        running += proportions[name]
-        cumulative.append((name, running))
-    for rec in records:
-        bucket = _bucket_for(rec, seed=seed, cumulative=cumulative)
-        splits[bucket].append(rec)
-    return splits
+    from dataset_scout.dedup import leakage_aware_split
 
-
-def _bucket_for(
-    rec: NormalizedRecord,
-    *,
-    seed: int,
-    cumulative: list[tuple[str, float]],
-) -> str:
-    h = hashlib.sha256()
-    h.update(str(seed).encode())
-    h.update(b":")
-    h.update(rec.source.encode())
-    h.update(b":")
-    h.update(rec.source_row_id.encode())
-    # Map first 16 hex chars to [0, 1).
-    fraction = int(h.hexdigest()[:16], 16) / 16**16
-    for name, threshold in cumulative:
-        if fraction < threshold:
-            return name
-    return cumulative[-1][0]
+    return leakage_aware_split(
+        records,
+        proportions,
+        seed=seed,
+        leakage_keys=leakage_keys,
+    )
 
 
 # ─── output writers ──────────────────────────────────────────────────
@@ -451,6 +449,7 @@ def _write_lockfile(
     dropped: list[RecipeComponent],
     realized: dict[str, dict[str, Any]],
     splits: dict[str, list[NormalizedRecord]],
+    dedup_stats: dict[str, Any],
     overrides: CurateOverrides,
     fingerprint: str,
     started_iso: str,
@@ -459,11 +458,18 @@ def _write_lockfile(
     payload = {
         "recipe_version": recipe.recipe_version,
         "curate_version": CURATE_VERSION,
-        "audit_readiness": "preview",
+        "audit_readiness": "ready",
         "audit_readiness_notes": [
-            "Hash-mod split is deterministic but NOT leakage-aware.",
-            "MinHash dedup is deferred to M4b; near-duplicate rows may cross splits.",
-            "Filter DSL is deferred to M4b; recipes with non-null `filter` are rejected.",
+            (
+                "Splits use MinHash + LSH grouping ("
+                f"num_perm={dedup_stats.get('num_perm')}, "
+                f"threshold={dedup_stats.get('threshold')}); "
+                "near-duplicate rows are kept on the same side of the split."
+            ),
+            (
+                "Filter expressions parsed via the dataset-scout DSL "
+                "(ast-validated; whitelist of operators + functions)."
+            ),
         ],
         "intent": recipe.intent.model_dump(mode="json"),
         "min_strategy_confidence": {
@@ -477,7 +483,15 @@ def _write_lockfile(
             "overridden_by_cli": overrides.seed_overridden,
         },
         "splits": {
-            "method": "hash_mod",
+            "method": dedup_stats.get("method", "minhash_lsh"),
+            "num_perm": dedup_stats.get("num_perm"),
+            "threshold": dedup_stats.get("threshold"),
+            "shingle_size": dedup_stats.get("shingle_size"),
+            "dedup_version": dedup_stats.get("dedup_version"),
+            "clusters_total": dedup_stats.get("clusters_total"),
+            "clusters_singleton": dedup_stats.get("clusters_singleton"),
+            "clusters_largest": dedup_stats.get("clusters_largest"),
+            "rows_in_dup_clusters": dedup_stats.get("rows_in_dup_clusters"),
             "proportions_recipe": recipe.splits.model_dump(mode="json"),
             "realized": {name: len(rows) for name, rows in splits.items()},
         },
@@ -541,6 +555,7 @@ def _write_report(
     splits: dict[str, list[NormalizedRecord]],
     realized: dict[str, dict[str, Any]],
     overrides: CurateOverrides,
+    dedup_stats: dict[str, Any],
     fingerprint: str,
     elapsed_s: float,
 ) -> None:
@@ -551,11 +566,13 @@ def _write_report(
     lines: list[str] = [
         f"# Curated corpus — {recipe.intent.brief.strip().splitlines()[0][:80]}",
         "",
-        "> ⚠️ **Preview build — not audit-ready.**  ",
-        "> This corpus uses a hash-mod split (deterministic but not\n"
-        "> leakage-aware) and skips MinHash dedup. The filter DSL is\n"
-        "> deferred to M4b. Treat this as a working artefact, not a\n"
-        "> defensible record.",
+        "> ✅ **Audit-ready.**  ",
+        "> Splits are leakage-aware: near-duplicate rows are clustered "
+        f"via MinHash + LSH (num_perm={dedup_stats.get('num_perm')}, "
+        f"threshold={dedup_stats.get('threshold')}) and assigned to a "
+        "single split. Filter expressions are parsed via a whitelisted "
+        "expression DSL. `recipe.lock.yaml` records every parameter and "
+        "override.",
         "",
         "## Stats",
         "",
@@ -573,6 +590,10 @@ def _write_report(
         f"{label_counts['remapped']} remapped · "
         f"{label_counts['subset_extracted']} subset_extracted",
         f"- **Licenses:** {licenses or '(unknown)'}",
+        f"- **Dedup clusters:** {dedup_stats.get('clusters_total', 0):,} "
+        f"({dedup_stats.get('clusters_singleton', 0):,} singletons, "
+        f"largest = {dedup_stats.get('clusters_largest', 0)}; "
+        f"{dedup_stats.get('rows_in_dup_clusters', 0):,} rows in dup clusters)",
         f"- **Fingerprint:** `{fingerprint[:16]}…`",
         f"- **Wall-clock:** {elapsed_s:.2f}s",
         "",
@@ -720,7 +741,7 @@ def run_curate(
     )
 
     # ── validation ──
-    _validate_no_filters(recipe.components)
+    filter_fns = _precompile_filters(recipe.components)
     _validate_composition_references(recipe.components)
     kept, dropped = _filter_by_confidence(recipe.components, overrides.min_conf_effective)
 
@@ -746,7 +767,12 @@ def run_curate(
     realized: dict[str, dict[str, Any]] = {}
     for c in kept:
         component_records = list(
-            _materialize_component(c, source=source_index[c.source], threat_family=threat_family)
+            _materialize_component(
+                c,
+                source=source_index[c.source],
+                threat_family=threat_family,
+                filter_fn=filter_fns.get(c.id),
+            )
         )
         all_records.extend(component_records)
         realized[c.id] = {
@@ -755,15 +781,16 @@ def run_curate(
             "license_raw": _component_license_raw(component_records),
             "license_spdx": _component_license_spdx(component_records),
             "row_identity_method": _component_identity_method(component_records),
+            "filter_applied": c.transform.filter,
         }
 
-    # ── split ──
+    # ── split (leakage-aware) ──
     proportions = (
         normalize_split_proportions(recipe.splits)
         if any((recipe.splits.train, recipe.splits.val, recipe.splits.test))
         else dict(DEFAULT_SPLITS)
     )
-    splits = _split_records(
+    splits, dedup_stats = _split_records(
         all_records,
         proportions,
         seed=overrides.seed_effective,
@@ -794,6 +821,7 @@ def run_curate(
         dropped=dropped,
         realized=realized,
         splits=splits,
+        dedup_stats=dedup_stats,
         overrides=overrides,
         fingerprint=fingerprint,
         started_iso=started_iso,
@@ -806,6 +834,7 @@ def run_curate(
         splits=splits,
         realized=realized,
         overrides=overrides,
+        dedup_stats=dedup_stats,
         fingerprint=fingerprint,
         elapsed_s=elapsed_s,
     )

@@ -203,21 +203,29 @@ datascout curate --from recipe.yaml --out ./mycorpus
 | `--min-strategy-confidence FLOAT` | recipe-defined | Override the recipe's threshold. Recorded as an override in `recipe.lock.yaml`. |
 | `--seed INT` | recipe-defined | Override the recipe's split seed. Recorded as an override. |
 
-### Status (M4a — preview)
+### Status: audit-ready
 
-The current slice ships a working pipeline but isn't yet audit-ready:
+The pipeline ships a defensible end-to-end build:
 
 - ✅ Recipe loader, materialisation from HuggingFace, normalized
   JSONL output, lockfile, manifest, report, fingerprint, usage.
-- ✅ Multimodal-safe `extras` (bytes/arrays coerced to strings with a
-  flag).
-- ✅ Hard-fail on any non-null `transform.filter` (silent no-op would
-  break the audit trail).
-- ⏳ M4b: MinHash dedup, leakage-aware splitter, minimal filter DSL.
+- ✅ Multimodal-safe `extras` (bytes/arrays coerced to strings with
+  a flag).
+- ✅ **Filter DSL** — `transform.filter` accepts a sandboxed
+  expression (booleans, comparisons, `len`, `contains_pattern`,
+  `lower`, `startswith`, `endswith`, `int`, `str`, `in`).
+  Disallowed nodes (attribute access, comprehensions, lambdas,
+  unknown functions) are rejected at compile time.
+- ✅ **MinHash dedup + leakage-aware split.** Near-duplicate rows
+  (Jaccard ≥ 0.8 over char 5-grams) cluster together; whole
+  clusters are assigned to a single split. Cluster stats are
+  written to the lockfile.
 
-Output `report.md` carries an explicit "preview build, not
-audit-ready" banner. `recipe.lock.yaml` records
-`audit_readiness: preview` with a note about deferred features.
+`recipe.lock.yaml` records `audit_readiness: ready` with the
+MinHash params (`num_perm`, `threshold`, `shingle_size`,
+`dedup_version`) + filter expressions in scope. `report.md`
+carries an "audit-ready" banner with cluster stats so the corpus's
+provenance is visible at a glance.
 
 ---
 

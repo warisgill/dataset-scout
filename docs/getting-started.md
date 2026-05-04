@@ -213,7 +213,7 @@ components:
         ok: benign
       label_kind_map:
         all: ground_truth
-      filter: null                     # filter DSL lands in M4b
+      filter: null                     # sandboxed expression, e.g. len(text) > 30
       take: all
 ```
 
@@ -223,8 +223,12 @@ Common edits:
   land in the `declined` list with a reason.
 - **Cap `take`** — for proxies, `take: 2000` keeps the corpus
   balanced so a large signal-proxy doesn't drown the direct fits.
-- **Null out filters** — until M4b ships the filter DSL, any
-  non-null filter causes curate to hard-fail. Edit them to `null`.
+- **Apply filters when useful** — `transform.filter` accepts a
+  sandboxed expression like `len(text) > 30 and label != 'unknown'`.
+  Allowed primitives: comparisons, boolean ops, `in`, `len`,
+  `contains_pattern`, `lower`, `startswith`, `endswith`, `int`,
+  `str`. Anything else (attribute access, lambdas, etc.) is rejected
+  at recipe load.
 
 ```bash
 cp scratch/recon/recipe.draft.yaml recipe.yaml
@@ -249,8 +253,8 @@ Output:
   2 skipped) in 47.8s
   - splits: train=3385 · val=419 · test=427
   - fingerprint: 8f3a40b1c2d4e007...
-  ! preview build — hash-mod split, no dedup. Audit-ready splitting +
-    MinHash land in M4b.
+  ✓ audit-ready: leakage-aware splits + filter DSL applied
+    (MinHash dedup, num_perm=128, threshold=0.8)
 ```
 
 Inside `over-refusal-corpus/`:
@@ -300,11 +304,10 @@ how did proxies factor in?
 
 ```yaml
 recipe_version: '1'
-audit_readiness: preview
+audit_readiness: ready
 audit_readiness_notes:
-  - Hash-mod split is deterministic but NOT leakage-aware.
-  - MinHash dedup is deferred to M4b; near-duplicate rows may cross splits.
-  - Filter DSL is deferred to M4b; recipes with non-null filter are rejected.
+  - Splits are leakage-aware; whole MinHash clusters route to one split.
+  - Filter expressions are sandboxed; provenance recorded per component.
 intent: { ... }
 min_strategy_confidence:
   recipe: 0.5
@@ -312,9 +315,17 @@ min_strategy_confidence:
   overridden_by_cli: false
 seed: { recipe: 42, effective: 42, overridden_by_cli: false }
 splits:
-  method: hash_mod
+  method: minhash_lsh
+  num_perm: 128
+  threshold: 0.8
+  shingle_size: 5
+  dedup_version: 1
   proportions_recipe: { train: 0.8, val: 0.1, test: 0.1 }
   realized: { train: 3385, val: 419, test: 427 }
+  clusters_total: 4072
+  clusters_singleton: 3937
+  clusters_largest: 4
+  rows_in_dup_clusters: 294
 components:
   - id: huggingface_bench-llm_or-bench
     source_id: bench-llm/or-bench
@@ -329,10 +340,10 @@ fingerprint: 8f3a40b1c2d4e007...
 scout_version: 0.0.1
 ```
 
-`audit_readiness: preview` is honest. M4b will flip it to `ready`
-once MinHash dedup + leakage-aware splitting + the filter DSL land.
-Until then, this is a working corpus, not yet a defensible one — and
-the lockfile says so.
+`audit_readiness: ready` means: deterministic seed, leakage-aware
+split (MinHash + LSH at threshold 0.8), filter expressions sandboxed
+to a small allowlist, and all of those parameters recorded for the
+reviewer. The lockfile says exactly what happened — no hand-waving.
 
 ---
 
@@ -408,9 +419,9 @@ datascout curate --from programs/merged-recipe.yaml --out programs/corpus/
   revisions and content hashes. If upstreams delete the data, only
   an archive (a future feature) makes the blend reproducible
   standalone.
-- **`curate` is currently `audit_readiness: preview`.** Hash-mod
-  splits, no MinHash dedup, filter DSL hard-fails. M4b is the next
-  upgrade.
+- **`curate` is audit-ready.** MinHash dedup, leakage-aware splits,
+  filter DSL — all on by default. The lockfile records every
+  parameter. Read the report; trust but verify.
 - **Not legal advice.** License signals are an SPDX best-effort
   guess; read the upstream card before redistributing.
 

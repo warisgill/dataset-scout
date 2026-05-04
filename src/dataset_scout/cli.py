@@ -443,10 +443,7 @@ def curate(
     splits_str = " · ".join(f"{n}={c}" for n, c in result.rows_per_split.items())
     err.print(f"  - splits: {splits_str}")
     err.print(f"  - fingerprint: {result.fingerprint[:16]}...")
-    err.print(
-        "  [yellow]![/yellow] preview build — hash-mod split, no dedup. "
-        "Audit-ready splitting + MinHash land in M4b."
-    )
+    err.print("  [green]✔[/green] audit-ready: leakage-aware splits + filter DSL applied.")
 
 
 # ─── cache ──────────────────────────────────────────────────────────

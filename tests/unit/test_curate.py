@@ -153,13 +153,15 @@ def test_run_curate_writes_all_artefacts(tmp_path: Path):
     ):
         assert (out / fname).exists(), f"missing {fname}"
 
-    # Splits roughly match 80/10/10 (allow ±10 slack on hash-mod).
+    # Leakage-aware MinHash splits give wider variance on small N
+    # because each cluster is assigned wholesale; relax the band but
+    # keep the total invariant.
     train_lines = (out / "train.jsonl").read_text(encoding="utf-8").splitlines()
     val_lines = (out / "val.jsonl").read_text(encoding="utf-8").splitlines()
     test_lines = (out / "test.jsonl").read_text(encoding="utf-8").splitlines()
-    assert 50 <= len(train_lines) <= 75
-    assert 1 <= len(val_lines) <= 20
-    assert 1 <= len(test_lines) <= 20
+    assert 40 <= len(train_lines) <= 80
+    assert 0 <= len(val_lines) <= 30
+    assert 0 <= len(test_lines) <= 30
     assert len(train_lines) + len(val_lines) + len(test_lines) == 80
 
 
@@ -199,11 +201,37 @@ def test_run_curate_label_kind_propagates(tmp_path: Path):
 # ─── filter hard-fail (M4a) ─────────────────────────────────────────
 
 
-def test_run_curate_rejects_non_null_filter(tmp_path: Path):
-    fake = _fake(_two_class_rows(n=10))
+def test_run_curate_applies_filter_expression(tmp_path: Path):
+    """Non-null filter is now compiled and applied (M4b filter DSL)."""
+    rows = _two_class_rows(n=10)
+    fake = _fake(rows)
+    # Filter to label == 1 only — half the rows
     component = _component(filter_str="label == 1")
     recipe = _make_recipe(components=[component])
-    with pytest.raises(DatasetScoutError, match="filter DSL is not implemented"):
+    run_curate(recipe, tmp_path, ctx=_ctx(), sources_override=[fake])
+    total = 0
+    for split in ("train.jsonl", "val.jsonl", "test.jsonl"):
+        total += len((tmp_path / split).read_text(encoding="utf-8").splitlines())
+    # Of 10 rows, 5 had label==1 (i % 2 == 0 → labels 1,0,1,0,...). Hmm
+    # actually our _two_class_rows uses i % 2 == 0 → label 1, so 5 pass.
+    assert total == 5
+
+
+def test_run_curate_rejects_invalid_filter_syntax(tmp_path: Path):
+    """Compile-time errors are surfaced clearly to the user."""
+    fake = _fake(_two_class_rows(n=10))
+    component = _component(filter_str="this is not valid python")
+    recipe = _make_recipe(components=[component])
+    with pytest.raises(DatasetScoutError, match="invalid filter expression"):
+        run_curate(recipe, tmp_path, ctx=_ctx(), sources_override=[fake])
+
+
+def test_run_curate_rejects_disallowed_filter_function(tmp_path: Path):
+    """Whitelist enforcement: __import__, attribute access, etc. blocked."""
+    fake = _fake(_two_class_rows(n=10))
+    component = _component(filter_str="__import__('os').system('rm -rf /')")
+    recipe = _make_recipe(components=[component])
+    with pytest.raises(DatasetScoutError, match="invalid filter expression"):
         run_curate(recipe, tmp_path, ctx=_ctx(), sources_override=[fake])
 
 
@@ -266,20 +294,24 @@ def test_lockfile_has_audit_readiness_flag(tmp_path: Path):
     recipe = _make_recipe(components=[_component()])
     run_curate(recipe, tmp_path, ctx=_ctx(), sources_override=[fake])
     lock = yaml.safe_load((tmp_path / "recipe.lock.yaml").read_text(encoding="utf-8"))
-    assert lock["audit_readiness"] == "preview"
+    assert lock["audit_readiness"] == "ready"
     assert any(
-        "not audit-ready" in n.lower() or "not leakage-aware" in n.lower()
+        "leakage-aware" in n.lower() or "minhash" in n.lower()
         for n in lock["audit_readiness_notes"]
     )
+    # Splits block records the dedup parameters.
+    assert lock["splits"]["method"] == "minhash_lsh"
+    assert "num_perm" in lock["splits"]
+    assert "clusters_total" in lock["splits"]
 
 
-def test_report_carries_preview_banner(tmp_path: Path):
+def test_report_carries_audit_ready_banner(tmp_path: Path):
     fake = _fake(_two_class_rows(n=10))
     recipe = _make_recipe(components=[_component()])
     run_curate(recipe, tmp_path, ctx=_ctx(), sources_override=[fake])
     report = (tmp_path / "report.md").read_text(encoding="utf-8")
-    assert "preview" in report.lower()
-    assert "not audit-ready" in report.lower()
+    assert "audit-ready" in report.lower()
+    assert "leakage-aware" in report.lower()
 
 
 def test_manifest_is_json_round_trip(tmp_path: Path):
@@ -287,7 +319,7 @@ def test_manifest_is_json_round_trip(tmp_path: Path):
     recipe = _make_recipe(components=[_component()])
     run_curate(recipe, tmp_path, ctx=_ctx(), sources_override=[fake])
     manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["audit_readiness"] == "preview"
+    assert manifest["audit_readiness"] == "ready"
     assert manifest["recipe_version"] == "1"
 
 

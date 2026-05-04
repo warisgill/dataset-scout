@@ -50,9 +50,35 @@ def _component_id(scorecard: Scorecard) -> str:
     return f"{scorecard.candidate.source}_{safe_id}"
 
 
+def _sanitize_filter(raw: str | None) -> tuple[str | None, str | None]:
+    """Validate an LLM-drafted filter against the curate DSL.
+
+    Returns ``(filter_or_None, note_or_None)``. If the filter compiles
+    cleanly we keep it. Otherwise we drop it (return None) and surface
+    a short caveat so the recipe edit step can put the constraint in
+    prose where it belongs. This keeps ``curate`` from hard-failing on
+    LLM mistakes in the *draft* — once the user has reviewed and
+    saved the recipe, curate's strict validation kicks in.
+    """
+    if raw is None or not str(raw).strip():
+        return None, None
+    from dataset_scout.filter_dsl import FilterCompileError, compile_filter
+
+    try:
+        compile_filter(str(raw))
+    except FilterCompileError as exc:
+        return None, (
+            f"LLM-drafted filter dropped (not a valid DSL expression): "
+            f"{exc}. Original: {raw!r}. If you need a row-level filter, "
+            f"re-express as e.g. `column == 'value'` or `len(text) > 30`."
+        )
+    return raw, None
+
+
 def _component_dict(sc: Scorecard, strategy: Strategy) -> dict[str, Any]:
     cand = sc.candidate
     transform = strategy.transform
+    sanitized_filter, filter_caveat = _sanitize_filter(transform.filter)
     component: dict[str, Any] = {
         "id": _component_id(sc),
         "source": cand.source,
@@ -67,12 +93,15 @@ def _component_dict(sc: Scorecard, strategy: Strategy) -> dict[str, Any]:
             "label_column": transform.label_column,
             "label_value_map": dict(transform.label_value_map),
             "label_kind_map": dict(transform.label_kind_map) or _default_label_kind_map(strategy),
-            "filter": transform.filter,
+            "filter": sanitized_filter,
             "take": transform.take,
         },
     }
-    if strategy.caveats:
-        component["caveats"] = list(strategy.caveats)
+    caveats = list(strategy.caveats)
+    if filter_caveat:
+        caveats.append(filter_caveat)
+    if caveats:
+        component["caveats"] = caveats
     if strategy.composes_with:
         component["composes_with"] = list(strategy.composes_with)
     return component
