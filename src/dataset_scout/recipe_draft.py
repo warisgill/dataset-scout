@@ -28,6 +28,13 @@ from dataset_scout.core import (
     StrategyKind,
 )
 
+# Default per-component row cap applied at recipe-draft time when the
+# strategy assessor returns ``take: "all"``. The cap keeps first-pass
+# materialization fast and produces a corpus the user can inspect in
+# minutes; it's recorded as a caveat on every capped component so the
+# edit step makes flipping back to ``"all"`` a one-line change.
+DEFAULT_DRAFT_TAKE_CAP = 5000
+
 # Strategies whose default label_kind we know without an explicit map.
 # subset_extraction inherits from the source's existing label semantics
 # (treated as ground_truth on the filtered subset). label_remapping is
@@ -75,10 +82,32 @@ def _sanitize_filter(raw: str | None) -> tuple[str | None, str | None]:
     return raw, None
 
 
+def _cap_take(raw: int | str) -> tuple[int | str, str | None]:
+    """Cap an LLM-drafted ``take`` so first-pass materialization stays
+    snappy.
+
+    The strategy assessor naturally returns ``"all"`` since it can't
+    predict dataset size. For large code/text corpora that would
+    download hundreds of thousands of rows on the first run. We swap
+    ``"all"`` for ``DEFAULT_DRAFT_TAKE_CAP`` and surface a caveat so
+    the user sees the cap and knows how to lift it. Explicit integer
+    values from the assessor are kept as-is.
+    """
+    if raw == "all":
+        return DEFAULT_DRAFT_TAKE_CAP, (
+            f"Recipe draft auto-capped take to {DEFAULT_DRAFT_TAKE_CAP} rows "
+            f"(strategy assessor returned 'all'). Edit `take: all` to "
+            "materialize the full component, or pass "
+            "`--max-rows-per-component N` to curate to override per-run."
+        )
+    return raw, None
+
+
 def _component_dict(sc: Scorecard, strategy: Strategy) -> dict[str, Any]:
     cand = sc.candidate
     transform = strategy.transform
     sanitized_filter, filter_caveat = _sanitize_filter(transform.filter)
+    capped_take, take_caveat = _cap_take(transform.take)
     component: dict[str, Any] = {
         "id": _component_id(sc),
         "source": cand.source,
@@ -94,12 +123,14 @@ def _component_dict(sc: Scorecard, strategy: Strategy) -> dict[str, Any]:
             "label_value_map": dict(transform.label_value_map),
             "label_kind_map": dict(transform.label_kind_map) or _default_label_kind_map(strategy),
             "filter": sanitized_filter,
-            "take": transform.take,
+            "take": capped_take,
         },
     }
     caveats = list(strategy.caveats)
     if filter_caveat:
         caveats.append(filter_caveat)
+    if take_caveat:
+        caveats.append(take_caveat)
     if caveats:
         component["caveats"] = caveats
     if strategy.composes_with:

@@ -550,3 +550,61 @@ def test_curate_classifies_unknown_failure(tmp_path: Path):
 
     assert result.failures[0]["category"] == "unknown"
     assert result.failures[0]["exception_type"] == "RuntimeError"
+
+
+# ─── M5: max_rows_per_component override ────────────────────────────
+
+
+def test_curate_max_rows_per_component_caps_take_all(tmp_path: Path):
+    """``--max-rows-per-component`` lowers a recipe's ``take: all`` for
+    a single run without editing the recipe file."""
+    rows = _two_class_rows(n=200)
+    fake = _fake(rows)
+    recipe = _make_recipe(components=[_component(take="all")])
+
+    result = run_curate(
+        recipe,
+        tmp_path / "corpus",
+        ctx=_ctx(),
+        sources_override=[fake],
+        max_rows_per_component=50,
+    )
+
+    assert result.total_rows == 50
+    assert result.components_kept == 1
+
+
+def test_curate_max_rows_per_component_lowers_explicit_take(tmp_path: Path):
+    """Override is the lower of (recipe take, override) — never raises
+    the recipe's cap."""
+    rows = _two_class_rows(n=200)
+    fake = _fake(rows)
+    recipe = _make_recipe(components=[_component(take=120)])
+
+    result = run_curate(
+        recipe,
+        tmp_path / "corpus",
+        ctx=_ctx(),
+        sources_override=[fake],
+        max_rows_per_component=50,
+    )
+
+    assert result.total_rows == 50
+
+
+def test_curate_max_rows_per_component_does_not_raise_recipe_cap(tmp_path: Path):
+    """Override of 500 doesn't expand a recipe's take=120 to 500."""
+    rows = _two_class_rows(n=200)
+    fake = _fake(rows)
+    recipe = _make_recipe(components=[_component(take=120)])
+
+    result = run_curate(
+        recipe,
+        tmp_path / "corpus",
+        ctx=_ctx(),
+        sources_override=[fake],
+        max_rows_per_component=500,
+    )
+
+    # Recipe says 120; override is 500; the lower wins.
+    assert result.total_rows == 120

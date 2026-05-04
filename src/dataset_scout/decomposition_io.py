@@ -28,9 +28,7 @@ def _to_payload(directions: list[DecompositionDirection]) -> dict[str, Any]:
     }
 
 
-def write_decomposition(
-    directions: list[DecompositionDirection], out: Path
-) -> Path | None:
+def write_decomposition(directions: list[DecompositionDirection], out: Path) -> Path | None:
     """Write decomposition YAML.
 
     `out` may be either a directory (in which case the file is written

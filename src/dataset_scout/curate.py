@@ -359,6 +359,7 @@ def _materialize_component(
     source: Source,
     threat_family: str | None,
     filter_fn: Any = None,
+    max_rows_override: int | None = None,
 ) -> Iterator[NormalizedRecord]:
     """Stream rows for one component and yield NormalizedRecord per row.
 
@@ -370,10 +371,17 @@ def _materialize_component(
     that fail the filter are skipped before the transform runs — this
     is critical for `subset_extraction`, where we materialize only the
     rows the strategy describes.
+
+    `max_rows_override`, when set, lowers the recipe's `take` value
+    (or replaces ``"all"``) so a user can do a fast first-pass curate
+    without hand-editing the recipe. It never raises the recipe's
+    cap — recipe is the source of truth.
     """
     candidate = _component_to_candidate(component)
     take = component.transform.take
     take_int = None if take == "all" else int(take)
+    if max_rows_override is not None:
+        take_int = max_rows_override if take_int is None else min(take_int, max_rows_override)
     rows = source.stream_rows(
         candidate,
         config=component.source_config,
@@ -807,6 +815,7 @@ def run_curate(
     sources_override: list[Source] | None = None,
     seed_override: int | None = None,
     min_strategy_confidence_override: float | None = None,
+    max_rows_per_component: int | None = None,
 ) -> CurateResult:
     """Materialise a recipe into a corpus directory.
 
@@ -866,6 +875,7 @@ def run_curate(
                     source=source_index[c.source],
                     threat_family=threat_family,
                     filter_fn=filter_fns.get(c.id),
+                    max_rows_override=max_rows_per_component,
                 )
             )
         except KeyboardInterrupt:

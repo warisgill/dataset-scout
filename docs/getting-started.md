@@ -214,15 +214,25 @@ components:
       label_kind_map:
         all: ground_truth
       filter: null                     # sandboxed expression, e.g. len(text) > 30
-      take: all
+      take: 5000                       # auto-capped from "all" — flip to a number or "all"
 ```
+
+> **About the auto-cap.** When the strategy assessor returns
+> `take: "all"` (the natural default since it can't predict dataset
+> size), the draft writer caps it to **5000 rows per component** and
+> adds a caveat explaining the cap and how to lift it. This keeps a
+> first-pass `curate` snappy on heavy code/text corpora — the
+> hallucinated-API corpus from `docs/concepts.md` materialises in
+> ~60 s with the cap, vs 25+ minutes uncapped.
 
 Common edits:
 
 - **Drop weak components** — delete entries you don't trust. They
   land in the `declined` list with a reason.
-- **Cap `take`** — for proxies, `take: 2000` keeps the corpus
-  balanced so a large signal-proxy doesn't drown the direct fits.
+- **Tune `take`** — flip back to `take: all` for full
+  materialization, or set an explicit integer like `take: 2000` for
+  a balanced blend (especially useful for signal proxies that would
+  otherwise dominate the direct-fit components).
 - **Apply filters when useful** — `transform.filter` accepts a
   sandboxed expression like `len(text) > 30 and label != 'unknown'`.
   Allowed primitives: comparisons, boolean ops, `in`, `len`,

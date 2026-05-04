@@ -1,0 +1,32 @@
+M5: take: all auto-cap + --max-rows-per-component override
+
+Two-part fix for the materialization-time edge surfaced during M5
+validation: a recipe with all 8 components on take: all hangs curate
+for 25+ minutes on heavy code corpora.
+
+* recipe_draft.DEFAULT_DRAFT_TAKE_CAP=5000 + _cap_take() swap any
+  take: "all" for the default cap at draft-write time and append a
+  caveat that names the cap, explains the rationale, and tells the
+  reader how to lift it (edit take: all or pass --max-rows-per-component).
+  Explicit integer take values pass through verbatim. Tests cover
+  both paths.
+
+* curate gains --max-rows-per-component N. Plumbed through run_curate
+  -> _materialize_component as max_rows_override. Lowers but NEVER
+  raises the recipe's take value (recipe is the source of truth).
+  Tests cover: cap take=all, lower an explicit take, and the
+  never-raise invariant.
+
+* Live verified on the M5 hallucinated-API recipe (8 components,
+  several large code corpora): a previously-killed 25+ min curate
+  now ships in 62 s, 3941 rows, full audit-ready output (filter DSL
+  + leakage-aware splits + classified failures all working).
+
+* docs/cli.md gets the new flag + an updated --out description for
+  decompose (file vs directory routing).
+* docs/getting-started.md walkthrough now shows take: 5000 with the
+  auto-cap callout instead of take: all.
+
+298 unit tests passing (added 5). mypy strict + ruff clean.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>

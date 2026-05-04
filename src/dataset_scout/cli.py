@@ -410,6 +410,19 @@ def curate(
         float | None, typer.Option("--min-strategy-confidence", min=0.0, max=1.0)
     ] = None,
     seed: Annotated[int | None, typer.Option("--seed", help="Override the recipe's seed.")] = None,
+    max_rows_per_component: Annotated[
+        int | None,
+        typer.Option(
+            "--max-rows-per-component",
+            min=1,
+            help=(
+                "Cap rows materialized per component for this run. Lowers but "
+                "never raises the recipe's `take` value. Useful for fast "
+                "iteration on heavy code/text corpora without hand-editing "
+                "the recipe."
+            ),
+        ),
+    ] = None,
 ) -> None:
     from dataset_scout.context import ScoutContext
     from dataset_scout.curate import load_recipe, run_curate
@@ -430,6 +443,7 @@ def curate(
             ctx=ctx,
             seed_override=seed,
             min_strategy_confidence_override=min_strategy_confidence,
+            max_rows_per_component=max_rows_per_component,
         )
     except DatasetScoutError as e:
         err.print(f"[red]error:[/red] {e}")

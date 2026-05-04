@@ -17,7 +17,11 @@ from dataset_scout import (
     StrategyKind,
     TransformSpec,
 )
-from dataset_scout.recipe_draft import build_recipe_draft, write_recipe_draft
+from dataset_scout.recipe_draft import (
+    DEFAULT_DRAFT_TAKE_CAP,
+    build_recipe_draft,
+    write_recipe_draft,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -122,3 +126,42 @@ def test_draft_intent_block_complete():
     assert intent_block["threat_families"] == ["prompt_injection"]
     assert intent_block["languages"] == ["en"]
     assert "MIT" in intent_block["license_allow"]
+
+
+# ─── M5: take cap on recipe draft ───────────────────────────────────
+
+
+def _strategy_with_take(kind: StrategyKind, take: int | str) -> Strategy:
+    return Strategy(
+        kind=kind,
+        confidence=0.9,
+        rationale="r",
+        transform=TransformSpec(text_column="text", label_column="label", take=take),
+    )
+
+
+def test_recipe_draft_caps_take_all_to_default():
+    """Strategy assessor returns ``take: 'all'`` → draft caps to
+    DEFAULT_DRAFT_TAKE_CAP and adds a caveat explaining the cap and
+    how to lift it."""
+    s = _strategy_with_take(StrategyKind.DIRECT_USE, "all")
+    result = _result([_scorecard("org/x", [s])])
+    draft = build_recipe_draft(result)
+
+    component = draft["components"][0]
+    assert component["transform"]["take"] == DEFAULT_DRAFT_TAKE_CAP
+
+    caveats = component.get("caveats", [])
+    assert any("auto-capped" in c.lower() for c in caveats)
+    assert any("--max-rows-per-component" in c for c in caveats)
+
+
+def test_recipe_draft_preserves_explicit_take():
+    """An explicit integer take from the assessor passes through verbatim."""
+    s = _strategy_with_take(StrategyKind.DIRECT_USE, 1234)
+    result = _result([_scorecard("org/x", [s])])
+    draft = build_recipe_draft(result)
+    component = draft["components"][0]
+    assert component["transform"]["take"] == 1234
+    # No cap caveat added when nothing was capped.
+    assert not any("auto-capped" in c.lower() for c in component.get("caveats", []))

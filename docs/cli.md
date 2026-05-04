@@ -61,7 +61,7 @@ datascout decompose "<brief>" [options]
 |---|---|
 | `--detection-target TEXT` | Override the parsed detection target. |
 | `--deployment-context TEXT` | Production / RAG / agent / etc. |
-| `--out PATH` | Write `decomposition.yaml` to this directory; otherwise stdout-only. |
+| `--out PATH` | Path to write `decomposition.yaml`. If the path ends with `.yaml`/`.yml` the file is written there directly; otherwise the path is treated as a directory and the file is written as `<out>/decomposition.yaml`. Without `--out`, output is stdout-only. |
 
 ### The cheap-iteration loop
 
@@ -202,6 +202,7 @@ datascout curate --from recipe.yaml --out ./mycorpus
 | `--out PATH` | `mycorpus/` | Output directory. |
 | `--min-strategy-confidence FLOAT` | recipe-defined | Override the recipe's threshold. Recorded as an override in `recipe.lock.yaml`. |
 | `--seed INT` | recipe-defined | Override the recipe's split seed. Recorded as an override. |
+| `--max-rows-per-component INT` | — | Cap rows materialized per component for this run. Lowers but never raises the recipe's `take` value — fast iteration on heavy code/text corpora without hand-editing the recipe. |
 
 ### Status: audit-ready
 
