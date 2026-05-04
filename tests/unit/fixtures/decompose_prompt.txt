@@ -14,8 +14,19 @@ Each direction should be a distinct angle the search should explore
 beyond the original brief, NOT a paraphrase of the brief itself.
 
 Each direction's `keywords` should be SHORT, LEXICAL search terms a
-keyword search engine would match (e.g., "prompt injection",
-"jailbreak prompts", "indirect injection"). Avoid full sentences.
+substring keyword search engine would match. HF's search is literal
+substring matching — short 2-3 word phrases ("prompt injection",
+"jailbreak prompts") work well; long phrases ("Python AttributeError
+missing method definition") almost never hit. Avoid full sentences.
+
+Where the keyword would be ambiguous on its own (e.g. "wrong
+answer", which would match every MCQA dataset on the Hub), prefer
+a domain-anchored variant ("code wrong answer", "API misuse").
+A bare generic phrase that could apply to any topic returns more
+noise than signal. Strong alternative: pick a more specific term
+that already implies the domain (e.g. "ImportError",
+"NoSuchMethodException") rather than "missing import" + a
+manually-prepended anchor.
 
 Return JSON matching this schema:
 {

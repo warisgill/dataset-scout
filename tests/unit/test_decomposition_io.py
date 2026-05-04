@@ -29,6 +29,32 @@ def test_write_returns_none_on_empty_input(tmp_path: Path):
     assert write_decomposition([], tmp_path) is None
 
 
+def test_write_to_explicit_yaml_path(tmp_path: Path):
+    """User passes ``--out path/file.yaml`` — write there directly,
+    don't create a folder named ``file.yaml`` and nest the file inside."""
+    target_path = tmp_path / "nested" / "my_decomposition.yaml"
+    target = write_decomposition([_direction("a")], target_path)
+    assert target == target_path
+    assert target_path.is_file()
+    # The parent (which we autocreated) must NOT have a directory of the same name inside it.
+    assert not (target_path.parent / "my_decomposition.yaml" / "decomposition.yaml").exists()
+
+
+def test_write_to_explicit_yml_path(tmp_path: Path):
+    target_path = tmp_path / "decomp.yml"
+    target = write_decomposition([_direction("a")], target_path)
+    assert target == target_path
+    assert target_path.is_file()
+
+
+def test_write_to_directory_uses_default_filename(tmp_path: Path):
+    """Recon/tour pass a directory; backwards compatibility."""
+    target = write_decomposition([_direction("a")], tmp_path / "outdir")
+    assert target is not None
+    assert target.name == "decomposition.yaml"
+    assert target.parent.name == "outdir"
+
+
 def test_write_persists_yaml(tmp_path: Path):
     target = write_decomposition([_direction("a"), _direction("b")], tmp_path)
     assert target is not None
