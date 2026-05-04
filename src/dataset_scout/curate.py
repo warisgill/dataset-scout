@@ -335,6 +335,12 @@ def _classify_component_failure(c: RecipeComponent, exc: BaseException) -> dict[
     elif "connection" in lower or "timeout" in lower or "network" in lower:
         category = "network"
         hint = "Transient network error; rerun once connectivity is back."
+    elif "429" in msg or "rate limit" in lower or "too many requests" in lower:
+        category = "rate_limited"
+        hint = (
+            "Hit upstream rate limits. Set HF_TOKEN for higher quotas, "
+            "or lower --max-concurrency on curate."
+        )
     else:
         category = "unknown"
         hint = "See the message; if it recurs, file an issue with the trace."
@@ -414,6 +420,75 @@ def _component_to_candidate(component: RecipeComponent) -> Any:
         revision=component.revision,
         metadata=CandidateMetadata(),
     )
+
+
+def _materialize_all(
+    components: list[RecipeComponent],
+    *,
+    source_index: dict[str, Source],
+    threat_family: str | None,
+    filter_fns: dict[str, Any],
+    max_rows_override: int | None,
+    max_concurrency: int,
+) -> tuple[dict[str, list[NormalizedRecord]], dict[str, dict[str, Any]]]:
+    """Materialise components in parallel via a thread pool.
+
+    Per-component ``_materialize_component`` calls are I/O bound (HF
+    `load_dataset(streaming=True)` setup is the dominant cost), so a
+    small thread pool gives near-linear speedup on multi-component
+    recipes without changing the per-row code path.
+
+    Returns ``(records_by_id, failures_by_id)``. Both are dicts
+    keyed by component id so the caller can reassemble in original
+    recipe order — preserving the determinism contract on
+    `all_records` ordering, MinHash cluster identity, and the
+    corpus fingerprint.
+
+    KeyboardInterrupt is handled explicitly: pending tasks are
+    cancelled and in-flight workers are allowed to finish, so
+    Ctrl-C is responsive even with a large queue.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    # Clamp workers to the meaningful range. 1 worker == sequential
+    # (still goes through the executor for code-path uniformity).
+    workers = max(1, min(max_concurrency, len(components)))
+
+    records_by_id: dict[str, list[NormalizedRecord]] = {}
+    failures_by_id: dict[str, dict[str, Any]] = {}
+
+    def _one(c: RecipeComponent) -> tuple[str, list[NormalizedRecord] | dict[str, Any]]:
+        try:
+            recs = list(
+                _materialize_component(
+                    c,
+                    source=source_index[c.source],
+                    threat_family=threat_family,
+                    filter_fn=filter_fns.get(c.id),
+                    max_rows_override=max_rows_override,
+                )
+            )
+            return c.id, recs
+        except KeyboardInterrupt:
+            raise
+        except Exception as exc:
+            return c.id, _classify_component_failure(c, exc)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_one, c): c for c in components}
+        try:
+            for fut in as_completed(futures):
+                cid, payload = fut.result()
+                if isinstance(payload, list):
+                    records_by_id[cid] = payload
+                else:
+                    failures_by_id[cid] = payload
+        except KeyboardInterrupt:
+            for f in futures:
+                f.cancel()
+            raise
+
+    return records_by_id, failures_by_id
 
 
 def _row_to_record(
@@ -816,6 +891,7 @@ def run_curate(
     seed_override: int | None = None,
     min_strategy_confidence_override: float | None = None,
     max_rows_per_component: int | None = None,
+    max_concurrency: int = 4,
 ) -> CurateResult:
     """Materialise a recipe into a corpus directory.
 
@@ -861,38 +937,39 @@ def run_curate(
                 f"Enabled sources: {list(source_index)}."
             )
 
-    # ── materialize ──
+    # ── materialize (parallel across components) ──
     threat_family = recipe.intent.threat_families[0] if recipe.intent.threat_families else None
+    per_component, failures_by_id = _materialize_all(
+        kept,
+        source_index=source_index,
+        threat_family=threat_family,
+        filter_fns=filter_fns,
+        max_rows_override=max_rows_per_component,
+        max_concurrency=max_concurrency,
+    )
+
+    # Reassemble in original recipe (`kept`) order so split assignment,
+    # the lockfile components list, and the corpus fingerprint are
+    # deterministic regardless of which workers finished first.
     all_records: list[NormalizedRecord] = []
     realized: dict[str, dict[str, Any]] = {}
     materialised: list[RecipeComponent] = []
     failures: list[dict[str, Any]] = []
     for c in kept:
-        try:
-            component_records = list(
-                _materialize_component(
-                    c,
-                    source=source_index[c.source],
-                    threat_family=threat_family,
-                    filter_fn=filter_fns.get(c.id),
-                    max_rows_override=max_rows_per_component,
-                )
-            )
-        except KeyboardInterrupt:
-            raise
-        except Exception as exc:
-            failures.append(_classify_component_failure(c, exc))
-            continue
-        materialised.append(c)
-        all_records.extend(component_records)
-        realized[c.id] = {
-            "rows_taken": len(component_records),
-            "label_kind_counts": _label_kind_counts(component_records),
-            "license_raw": _component_license_raw(component_records),
-            "license_spdx": _component_license_spdx(component_records),
-            "row_identity_method": _component_identity_method(component_records),
-            "filter_applied": c.transform.filter,
-        }
+        if c.id in per_component:
+            recs = per_component[c.id]
+            materialised.append(c)
+            all_records.extend(recs)
+            realized[c.id] = {
+                "rows_taken": len(recs),
+                "label_kind_counts": _label_kind_counts(recs),
+                "license_raw": _component_license_raw(recs),
+                "license_spdx": _component_license_spdx(recs),
+                "row_identity_method": _component_identity_method(recs),
+                "filter_applied": c.transform.filter,
+            }
+        elif c.id in failures_by_id:
+            failures.append(failures_by_id[c.id])
 
     if not materialised:
         # All components failed — emit a structured error so the CLI

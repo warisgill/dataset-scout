@@ -203,6 +203,7 @@ datascout curate --from recipe.yaml --out ./mycorpus
 | `--min-strategy-confidence FLOAT` | recipe-defined | Override the recipe's threshold. Recorded as an override in `recipe.lock.yaml`. |
 | `--seed INT` | recipe-defined | Override the recipe's split seed. Recorded as an override. |
 | `--max-rows-per-component INT` | — | Cap rows materialized per component for this run. Lowers but never raises the recipe's `take` value — fast iteration on heavy code/text corpora without hand-editing the recipe. |
+| `--max-concurrency INT` | `4` | Number of components materialized in parallel. Most of the per-component cost is HuggingFace `load_dataset` setup (split discovery, parquet header fetch); parallelising 4–8 workers gives ~linear speedup. Lower to 1 for sequential debugging; raise carefully to avoid HF rate limits (especially without `HF_TOKEN`). |
 
 ### Status: audit-ready
 

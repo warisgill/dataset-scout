@@ -552,6 +552,128 @@ def test_curate_classifies_unknown_failure(tmp_path: Path):
     assert result.failures[0]["exception_type"] == "RuntimeError"
 
 
+def test_curate_classifies_rate_limit_failure(tmp_path: Path):
+    """M5 edge #7 partial: HTTP 429 / rate-limit errors should be a
+    distinct category with a hint pointing at HF_TOKEN and concurrency."""
+    rows = _two_class_rows(n=10)
+    bad = [{"_raise": Exception("HTTP 429: Too Many Requests")}]
+    fake = _multi_fake({"org/good": rows, "org/bad": bad})
+    recipe = _make_recipe(components=[_component_for("org/good"), _component_for("org/bad")])
+
+    result = run_curate(recipe, tmp_path / "corpus", ctx=_ctx(), sources_override=[fake])
+
+    assert result.failures[0]["category"] == "rate_limited"
+    assert "HF_TOKEN" in result.failures[0]["hint"]
+    assert "max-concurrency" in result.failures[0]["hint"]
+
+
+# ─── M5: parallel materialisation determinism ───────────────────────
+
+
+def test_curate_parallel_run_is_deterministic(tmp_path: Path):
+    """Same recipe + same seed must produce same fingerprint regardless
+    of how completion order interleaves across the worker pool. This is
+    the contract that lets a defensible reviewer reproduce a corpus."""
+    samples = {f"org/c{i}": _two_class_rows(n=20) for i in range(8)}
+
+    def fake_for_run() -> FakeSource:
+        candidates = [
+            Candidate(source="fake", id=cid, revision="r1", metadata=CandidateMetadata())
+            for cid in samples
+        ]
+        return FakeSource(candidates, samples=samples)
+
+    recipe = _make_recipe(
+        components=[_component_for(cid) for cid in samples],
+        seed=42,
+    )
+
+    out_a = tmp_path / "a"
+    out_b = tmp_path / "b"
+    res_a = run_curate(
+        recipe, out_a, ctx=_ctx(), sources_override=[fake_for_run()], max_concurrency=4
+    )
+    res_b = run_curate(
+        recipe, out_b, ctx=_ctx(), sources_override=[fake_for_run()], max_concurrency=4
+    )
+
+    assert res_a.fingerprint == res_b.fingerprint
+    assert res_a.rows_per_split == res_b.rows_per_split
+
+    # Lockfile component lists also should match in order.
+    lock_a = yaml.safe_load((out_a / "recipe.lock.yaml").read_text(encoding="utf-8"))
+    lock_b = yaml.safe_load((out_b / "recipe.lock.yaml").read_text(encoding="utf-8"))
+    assert [c["id"] for c in lock_a["components"]] == [c["id"] for c in lock_b["components"]]
+
+
+def test_curate_parallel_matches_sequential(tmp_path: Path):
+    """Parallel mode (workers > 1) must produce the same fingerprint
+    as sequential mode (workers = 1) for the same inputs."""
+    samples = {f"org/c{i}": _two_class_rows(n=15) for i in range(5)}
+
+    def fake_for_run() -> FakeSource:
+        candidates = [
+            Candidate(source="fake", id=cid, revision="r1", metadata=CandidateMetadata())
+            for cid in samples
+        ]
+        return FakeSource(candidates, samples=samples)
+
+    recipe = _make_recipe(
+        components=[_component_for(cid) for cid in samples],
+        seed=7,
+    )
+
+    out_seq = tmp_path / "seq"
+    out_par = tmp_path / "par"
+    res_seq = run_curate(
+        recipe, out_seq, ctx=_ctx(), sources_override=[fake_for_run()], max_concurrency=1
+    )
+    res_par = run_curate(
+        recipe, out_par, ctx=_ctx(), sources_override=[fake_for_run()], max_concurrency=4
+    )
+
+    assert res_seq.fingerprint == res_par.fingerprint
+    assert res_seq.rows_per_split == res_par.rows_per_split
+    assert res_seq.total_rows == res_par.total_rows
+
+
+def test_curate_parallel_handles_mixed_success_and_failure(tmp_path: Path):
+    """Workers may complete in any order, and some may raise. The final
+    materialised list and failures list must still be in original
+    `kept` order, not completion order."""
+    good_rows = _two_class_rows(n=10)
+    bad_429 = [{"_raise": Exception("HTTP 429: Too Many Requests")}]
+    bad_gated = [{"_raise": Exception("Dataset 'org/x' is a gated dataset on the Hub.")}]
+
+    samples = {
+        "org/good_a": good_rows,
+        "org/bad_429": bad_429,
+        "org/good_b": good_rows,
+        "org/bad_gated": bad_gated,
+        "org/good_c": good_rows,
+    }
+    candidates = [
+        Candidate(source="fake", id=cid, revision="r1", metadata=CandidateMetadata())
+        for cid in samples
+    ]
+    fake = FakeSource(candidates, samples=samples)
+
+    recipe = _make_recipe(components=[_component_for(cid) for cid in samples], seed=42)
+
+    result = run_curate(
+        recipe, tmp_path / "corpus", ctx=_ctx(), sources_override=[fake], max_concurrency=4
+    )
+
+    assert result.components_kept == 3
+    assert result.components_failed == 2
+
+    # Failures list must be in the original `kept` order: bad_429 (idx 1)
+    # before bad_gated (idx 3).
+    assert [f["id"] for f in result.failures] == ["fake_org_bad_429", "fake_org_bad_gated"]
+    assert result.failures[0]["category"] == "rate_limited"
+    assert result.failures[1]["category"] == "gated_dataset"
+
+
 # ─── M5: max_rows_per_component override ────────────────────────────
 
 

@@ -423,6 +423,21 @@ def curate(
             ),
         ),
     ] = None,
+    max_concurrency: Annotated[
+        int,
+        typer.Option(
+            "--max-concurrency",
+            min=1,
+            max=16,
+            help=(
+                "Number of components materialized in parallel. Default 4. "
+                "Most of the per-component cost is HuggingFace `load_dataset` "
+                "setup overhead, which parallelises near-linearly. Lower to 1 "
+                "for sequential builds (e.g. when debugging a hang); raise "
+                "carefully to avoid HF rate limits, especially without HF_TOKEN."
+            ),
+        ),
+    ] = 4,
 ) -> None:
     from dataset_scout.context import ScoutContext
     from dataset_scout.curate import load_recipe, run_curate
@@ -444,6 +459,7 @@ def curate(
             seed_override=seed,
             min_strategy_confidence_override=min_strategy_confidence,
             max_rows_per_component=max_rows_per_component,
+            max_concurrency=max_concurrency,
         )
     except DatasetScoutError as e:
         err.print(f"[red]error:[/red] {e}")
