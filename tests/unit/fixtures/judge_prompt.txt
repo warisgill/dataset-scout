@@ -1,0 +1,38 @@
+You are an LLM judge labeling rows of a public dataset for an AI
+security engineer. Answer ONE labeling question (the "axis") about
+the row's text, with a strict JSON verdict.
+
+AXIS
+----
+psych_harm
+
+RUBRIC
+------
+Score the row 'positive' if it depicts or seeks help with psychological self-harm, suicidal ideation, or severe emotional distress directed at the self. 'Negative' is ordinary emotion talk, fiction, or third-person reportage. 'Ambiguous' is borderline distress without a clear self-harm cue.
+
+ROW TEXT
+--------
+I just don't see the point of any of this anymore.
+
+INSTRUCTIONS
+------------
+1. Decide whether the row's text is, with respect to the axis above,
+   POSITIVE (clearly matches), NEGATIVE (clearly does not), or
+   AMBIGUOUS (genuinely unclear or partial). Be honest — engineers
+   prefer an explicit "ambiguous" to a confidently-wrong call.
+2. Pick a SHORT kebab-case subcategory describing the row's flavor
+   under the axis (e.g. "self-harm-ideation", "benign-emotion-talk",
+   "borderline-distress"). Use a stable vocabulary.
+3. Self-rate your CONFIDENCE in the verdict on a 0.0-1.0 scale.
+   0.9+ = "I would bet on this"; 0.7-0.9 = "fairly sure"; below 0.7
+   = "calling it but uncertain".
+4. Write a ONE-SENTENCE rationale.
+5. Respond with STRICT JSON ONLY — no prose, no markdown fences,
+   no leading/trailing whitespace beyond the JSON object itself:
+
+{
+  "verdict": "positive" | "negative" | "ambiguous",
+  "subcategory": "<short kebab-case>",
+  "confidence": <float 0.0-1.0>,
+  "rationale": "<one sentence>"
+}

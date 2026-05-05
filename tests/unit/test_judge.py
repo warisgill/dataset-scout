@@ -150,6 +150,34 @@ def test_render_uses_placeholder_when_no_rubric() -> None:
     assert "(no rubric supplied" in p
 
 
+_SNAPSHOT_PATH = Path(__file__).parent / "fixtures" / "judge_prompt.txt"
+
+
+def test_render_snapshot_stable() -> None:
+    """Prompt drift surfaces as a PR diff. Mirrors the decompose /
+    strategy-assessor snapshot scaffold; if intentional, delete the
+    snapshot file and re-run the test."""
+    rendered = render_judge_prompt(
+        axis="psych_harm",
+        rubric=(
+            "Score the row 'positive' if it depicts or seeks help with "
+            "psychological self-harm, suicidal ideation, or severe "
+            "emotional distress directed at the self. 'Negative' is "
+            "ordinary emotion talk, fiction, or third-person reportage. "
+            "'Ambiguous' is borderline distress without a clear self-harm cue."
+        ),
+        text="I just don't see the point of any of this anymore.",
+    )
+    if not _SNAPSHOT_PATH.exists():
+        _SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _SNAPSHOT_PATH.write_text(rendered, encoding="utf-8")
+    expected = _SNAPSHOT_PATH.read_text(encoding="utf-8")
+    assert rendered == expected, (
+        "Judge prompt drifted from snapshot. If intentional, delete "
+        f"{_SNAPSHOT_PATH} and re-run the test."
+    )
+
+
 def test_cache_key_changes_with_template_version() -> None:
     a = _cache_key(prompt="x", axis="y", model="m", template_version="1")
     b = _cache_key(prompt="x", axis="y", model="m", template_version="2")
