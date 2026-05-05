@@ -69,9 +69,163 @@ def test_normalise_drops_overly_long():
     assert _normalise([long, "ok phrase"]) == ["ok phrase"]
 
 
+def test_hf_direction_queries_camel_split_recalled_names():
+    """CamelCase recalled names emit space-separated sibling queries.
+
+    Empirically `PersonaChat` (one word) doesn't match
+    `google/Synthetic-Persona-Chat` on HF lexical search; the
+    space-separated form does. Same fix lets us catch any
+    hyphenated dataset id from a CamelCase paper-name recall.
+    """
+    from dataset_scout.sources.huggingface import _camel_split, _direction_queries
+
+    # _camel_split smoke checks
+    assert _camel_split("PersonaChat") == ["Persona", "Chat"]
+    assert _camel_split("INTIMA") == ["INTIMA"]
+    assert _camel_split("GPT4") == ["GPT", "4"]
+
+    d = DecompositionDirection(
+        name="x",
+        rationale="r",
+        keywords=[],
+        recalled_dataset_names=["PersonaChat", "INTIMA"],
+        threat_families=[],
+        expected_finds="",
+    )
+    qs = _direction_queries(d)
+    assert "PersonaChat" in qs
+    assert "Persona Chat" in qs  # the CamelCase split sibling
+    assert "INTIMA" in qs
+    # No spurious "I N T I M A" — single-token names produce no split.
+    assert "I N T I M A" not in qs
+
+
+def test_hf_direction_queries_no_camel_split_on_separators():
+    """Names already containing hyphens / underscores / slashes don't get split."""
+    from dataset_scout.sources.huggingface import _direction_queries
+
+    d = DecompositionDirection(
+        name="x",
+        rationale="r",
+        keywords=[],
+        recalled_dataset_names=["Anthropic/hh-rlhf", "or-bench", "google_persona_chat"],
+        threat_families=[],
+        expected_finds="",
+    )
+    qs = _direction_queries(d)
+    assert "Anthropic/hh-rlhf" in qs
+    assert "or-bench" in qs
+    # No artificial split adding e.g. "Anthropic" + "hh rlhf" as siblings.
+    assert qs.count("Anthropic/hh-rlhf") == 1
+
+
 def test_normalise_caps_at_8():
     out = _normalise([f"phrase{i}" for i in range(20)])
     assert len(out) == 8
+
+
+def test_normalise_names_preserves_case():
+    """Recalled names are proper nouns; case must be preserved."""
+    from dataset_scout.keyword_expansion import _normalise_names
+
+    out = _normalise_names(["PersonaChat", "  XSTest ", "INTIMA"])
+    assert out == ["PersonaChat", "XSTest", "INTIMA"]
+
+
+def test_normalise_names_dedupes_case_insensitive():
+    from dataset_scout.keyword_expansion import _normalise_names
+
+    out = _normalise_names(["PersonaChat", "personachat", "PersonaChat"])
+    assert len(out) == 1
+    assert out[0] == "PersonaChat"  # first wins
+
+
+def test_normalise_names_caps_at_6():
+    from dataset_scout.keyword_expansion import _normalise_names
+
+    out = _normalise_names([f"Bench{i}" for i in range(20)])
+    assert len(out) == 6
+
+
+def test_apply_expansions_propagates_recalled_names():
+    """The expansion stage's recalled dataset names land on the direction."""
+    from dataset_scout.keyword_expansion import (
+        ExpansionResponse,
+        _apply_expansions,
+    )
+
+    directions = _make_directions()
+    response = ExpansionResponse(
+        expansions=[
+            {
+                "name": "parasocial_interactions",
+                "dataset_keywords": ["companion chat"],
+                "recalled_dataset_names": ["INTIMA", "PersonaChat"],
+            },
+            {
+                "name": "emotion_generation_recognition",
+                "dataset_keywords": ["emotion data"],
+                "recalled_dataset_names": ["GoEmotions"],
+            },
+        ]
+    )
+    out = _apply_expansions(directions, response)
+    assert out[0].recalled_dataset_names == ["INTIMA", "PersonaChat"]
+    assert out[1].recalled_dataset_names == ["GoEmotions"]
+
+
+def test_hf_direction_queries_includes_recalled_names_first():
+    """Recalled named benchmarks lead the query list, no shortening applied."""
+    from dataset_scout.sources.huggingface import _direction_queries
+
+    d = DecompositionDirection(
+        name="x",
+        rationale="r",
+        keywords=["parasocial bonds"],
+        dataset_keywords=["companion chat"],
+        recalled_dataset_names=["INTIMA", "PersonaChat"],
+        threat_families=[],
+        expected_finds="",
+    )
+    qs = _direction_queries(d)
+    # Recalled names first, in order, AS-IS (no lowercase, no shortening).
+    assert qs[0] == "INTIMA"
+    assert qs[1] == "PersonaChat"
+    # Compound nouns and academic keywords still appear after.
+    assert any("companion chat" in q.lower() for q in qs)
+
+
+def test_paper_direction_queries_includes_recalled_names():
+    """S2 paper queries also pull recalled names — paper titles often contain them."""
+    from dataset_scout.paper_search import _direction_queries
+
+    d = DecompositionDirection(
+        name="x",
+        rationale="r",
+        keywords=["parasocial bonds", "emotional attachment"],
+        recalled_dataset_names=["INTIMA", "PersonaChat"],
+        threat_families=[],
+        expected_finds="",
+    )
+    qs = _direction_queries(d)
+    assert "INTIMA" in qs
+    assert "PersonaChat" in qs
+
+
+def test_hf_direction_queries_no_recalled_names_falls_back():
+    """Direction with no recalled names still works — uses keywords."""
+    from dataset_scout.sources.huggingface import _direction_queries
+
+    d = DecompositionDirection(
+        name="x",
+        rationale="r",
+        keywords=["alpha", "beta"],
+        recalled_dataset_names=[],
+        threat_families=[],
+        expected_finds="",
+    )
+    qs = _direction_queries(d)
+    assert qs == ["alpha", "beta"]
 
 
 def test_normalise_strips_quotes_and_whitespace():

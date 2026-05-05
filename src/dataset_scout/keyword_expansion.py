@@ -41,9 +41,10 @@ if TYPE_CHECKING:
 
 
 # Bumped when the prompt or response handling changes.
-EXPANSION_VERSION = "3"
+EXPANSION_VERSION = "4"
 
 _MAX_KEYWORDS_PER_DIRECTION = 8
+_MAX_RECALLED_NAMES_PER_DIRECTION = 6
 
 
 class _ExpansionEntry(BaseModel):
@@ -51,6 +52,7 @@ class _ExpansionEntry(BaseModel):
 
     name: str
     dataset_keywords: list[str] = Field(default_factory=list)
+    recalled_dataset_names: list[str] = Field(default_factory=list)
 
 
 class ExpansionResponse(BaseModel):
@@ -128,20 +130,55 @@ DIRECTIONS
 ----------
 <<DIRECTIONS_BLOCK>>
 
-For each direction, list 5-8 phrases that mix:
+For each direction, you will produce TWO lists:
+
+(1) `dataset_keywords` — 5-8 short compound-noun phrases:
   - 2-3 phrases for the direction's CORE concepts
   - 3-5 phrases that BRIDGE to adjacent domains where data actually lives
+
+(2) `recalled_dataset_names` — 3-6 SPECIFIC NAMED datasets, benchmarks,
+or research lines you can recall from your training that are
+plausibly relevant to this direction. These are the proper-noun
+terms researchers and dataset uploaders use as ids. Critical for
+discovery: HF datasets are often named after the research line
+(e.g., `google/Synthetic-Persona-Chat`, `walledai/XSTest`,
+`bench-llm/or-bench`, `Anthropic/hh-rlhf`,
+`AI-companionship/INTIMA`) — generic compound nouns miss them.
+
+Examples of the kind of names to recall (genre-agnostic — illustrate
+the SHAPE, not the topic):
+  - Dialogue / conversation: PersonaChat, BlenderBot, Topical-Chat,
+    DailyDialog, ConvAI2
+  - Safety / refusal benchmarks: XSTest, OR-Bench, BeaverTails,
+    HarmBench, AdvBench, RealToxicityPrompts
+  - General LLM benchmarks: MMLU, BBH, TruthfulQA, GSM8K
+  - Preference / RLHF: HH-RLHF, UltraFeedback, Nectar
+  - Toxicity / moderation: Civil Comments, Jigsaw, ToxiGen
+  - Mental-health / counseling: CounselChat, MentalChat, ESConv
+  - Companion / parasocial AI: INTIMA
+
+Recall only names you genuinely know exist (or strongly suspect
+exist — borderline ok; we'll de-noise by checking HF). If the
+direction is so abstract no relevant named benchmarks come to mind,
+return an empty list.
+
+The recalled names will be issued AS-IS to HuggingFace's lexical
+search. Use exact capitalization and punctuation as published
+(e.g., "PersonaChat" not "persona chat").
 
 Return JSON matching this schema:
 {
   "expansions": [
-    {"name": "<direction_name>", "dataset_keywords": ["...", "...", ...]},
+    {
+      "name": "<direction_name>",
+      "dataset_keywords": ["...", "...", ...],
+      "recalled_dataset_names": ["PersonaChat", "INTIMA", ...]
+    },
     ...
   ]
 }
 
-Return ONE entry per direction in the same order. Empty list only if
-the direction is so abstract no plausible domain bridge exists (rare).
+Return ONE entry per direction in the same order.
 """
 
 
@@ -246,18 +283,26 @@ def _apply_expansions(
     response: ExpansionResponse,
 ) -> list[DecompositionDirection]:
     """Match expansion entries onto directions by name; copy with the
-    new field populated. Falls through unchanged for unmatched
+    new fields populated. Falls through unchanged for unmatched
     directions so the result preserves the original list."""
-    by_name: dict[str, list[str]] = {
+    keywords_by_name: dict[str, list[str]] = {
         e.name: _normalise(e.dataset_keywords) for e in response.expansions
+    }
+    names_by_name: dict[str, list[str]] = {
+        e.name: _normalise_names(e.recalled_dataset_names) for e in response.expansions
     }
     out: list[DecompositionDirection] = []
     for d in directions:
-        ks = by_name.get(d.name, [])
-        if not ks:
+        ks = keywords_by_name.get(d.name, [])
+        recalled = names_by_name.get(d.name, [])
+        if not ks and not recalled:
             out.append(d)
             continue
-        out.append(d.model_copy(update={"dataset_keywords": ks}))
+        out.append(
+            d.model_copy(
+                update={"dataset_keywords": ks, "recalled_dataset_names": recalled}
+            )
+        )
     return out
 
 
@@ -279,6 +324,34 @@ def _normalise(raw: list[str]) -> list[str]:
         seen.add(norm)
         out.append(norm)
         if len(out) >= _MAX_KEYWORDS_PER_DIRECTION:
+            break
+    return out
+
+
+def _normalise_names(raw: list[str]) -> list[str]:
+    """Trim + dedupe + cap on case-insensitive key, but PRESERVE original case.
+
+    Recalled dataset names are proper nouns ("PersonaChat", "INTIMA") —
+    HF lexical search is case-insensitive on the substring side, but
+    keeping the original case improves debug traces and matches dataset
+    ids more closely. Drops empties and overly-long strings.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for n in raw:
+        if not isinstance(n, str):
+            continue
+        norm = n.strip().strip("\"'")
+        if not norm:
+            continue
+        if len(norm) > 80:
+            continue
+        key = norm.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(norm)
+        if len(out) >= _MAX_RECALLED_NAMES_PER_DIRECTION:
             break
     return out
 

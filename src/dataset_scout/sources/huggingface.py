@@ -17,6 +17,7 @@ upstream in the pipeline (added in M1b).
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -29,6 +30,24 @@ from dataset_scout.core import (
 )
 from dataset_scout.licenses import guess_spdx
 from dataset_scout.sources.base import Budget, Obligation
+
+# Splits a CamelCase-only string into its component words. Handles:
+#   PersonaChat        -> ["Persona", "Chat"]
+#   GPT4              -> ["GPT", "4"]
+#   IntimacyBench     -> ["Intimacy", "Bench"]
+#   HHRLHFData        -> ["HHRLHF", "Data"]   (acronym runs stay together)
+# Returns the input as a single-element list if no boundary is found.
+_CAMEL_BOUNDARY = re.compile(
+    r"(?<=[a-z])(?=[A-Z])"           # lowerUpper
+    r"|(?<=[A-Z])(?=[A-Z][a-z])"     # ABCdef -> AB|Cdef
+    r"|(?<=[A-Za-z])(?=\d)"          # letter|digit
+    r"|(?<=\d)(?=[A-Za-z])"          # digit|letter
+)
+
+
+def _camel_split(s: str) -> list[str]:
+    parts = _CAMEL_BOUNDARY.split(s)
+    return [p for p in parts if p]
 
 if TYPE_CHECKING:
     from huggingface_hub import HfApi
@@ -184,9 +203,10 @@ def _direction_queries(direction: DecompositionDirection) -> list[str]:
     expanded phrases catch datasets that the abstract keywords miss
     entirely (uploaders don't write "parasocial bonds" in dataset ids).
 
-    Strategy: prefer dataset_keywords (closer to how HF datasets are
-    named); fall back to keywords; union both with dedupe and cap at 7
-    so the per-recon HF query budget stays bounded.
+    Strategy: highest-precision first (recalled named benchmarks),
+    then HF-uploader-style compound nouns, then academic-style as
+    breadth. Cap at 7 per direction so the per-recon HF query budget
+    stays bounded.
 
     Each phrase becomes its own HF `search=` query — substring matching
     means that joining all phrases into one query returns near-zero hits
@@ -201,8 +221,19 @@ def _direction_queries(direction: DecompositionDirection) -> list[str]:
     fail this AND constraint when the third token doesn't happen to
     appear next to the first two in any uploader's id. To compensate,
     any phrase of 3+ tokens ALSO emits its 2-token prefix as a sibling
-    query (deduped). This catches the high-recall short form while
-    keeping the precise long form available for cards that DO contain it.
+    query (deduped). Recalled named benchmarks (e.g. "PersonaChat",
+    "INTIMA", "XSTest") are issued AS-IS — they're proper nouns and
+    shortening would destroy the match. Empirically these are the
+    highest-precision queries: they catch named research lines that
+    compound nouns miss entirely (`google/Synthetic-Persona-Chat`,
+    `AI-companionship/INTIMA`).
+
+    CamelCase tokenization: HF dataset uploaders write the same
+    benchmark as ``persona-chat`` or ``Persona-Chat`` while the LLM
+    recalls it as ``PersonaChat``. ``PersonaChat`` (one word) does
+    NOT match ``google/Synthetic-Persona-Chat`` on HF's tokenized
+    search. So for any recalled name with 2+ CamelCase parts, we
+    ALSO emit the space-separated variant as a sibling query.
     """
     pool: list[str] = []
     seen: set[str] = set()
@@ -229,10 +260,33 @@ def _direction_queries(direction: DecompositionDirection) -> list[str]:
         if len(tokens) >= 3:
             _add(" ".join(tokens[:2]))
 
-    # HF-uploader-style first (typically higher-precision for datasets).
+    def _add_recalled_name(name: str) -> None:
+        """Add a recalled benchmark name plus its CamelCase split if any.
+
+        ``PersonaChat`` -> emits both ``PersonaChat`` and ``Persona Chat``.
+        ``INTIMA`` -> just ``INTIMA`` (no CamelCase boundary).
+        ``Anthropic/hh-rlhf`` -> just ``Anthropic/hh-rlhf`` (already has
+        separators).
+        """
+        norm = name.strip()
+        if not norm:
+            return
+        _add(norm)
+        # CamelCase split only when there are no whitespace/hyphen
+        # separators (avoid mangling already-tokenised names).
+        if " " in norm or "-" in norm or "_" in norm or "/" in norm:
+            return
+        parts = _camel_split(norm)
+        if len(parts) >= 2:
+            _add(" ".join(parts))
+
+    # Recalled named benchmarks first — highest precision.
+    for name in direction.recalled_dataset_names:
+        _add_recalled_name(name)
+    # HF-uploader-style compound nouns second.
     for kw in direction.dataset_keywords:
         _add_with_shortenings(kw)
-    # Then academic-style as fallback / breadth.
+    # Academic-style as breadth.
     for kw in direction.keywords:
         _add_with_shortenings(kw)
     if pool:

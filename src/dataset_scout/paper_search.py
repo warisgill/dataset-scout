@@ -318,9 +318,32 @@ def _build_intent_query(intent: Intent) -> str:
 
 
 def _direction_queries(direction: DecompositionDirection) -> list[str]:
-    """Per-keyword queries — same shape as the Source plugins."""
-    if direction.keywords:
-        return list(direction.keywords[:_KEYWORDS_PER_DIRECTION])
+    """Per-direction S2 queries.
+
+    Pull the LLM-recalled named benchmarks first (proper-noun queries
+    like "PersonaChat", "INTIMA" — paper titles often contain these
+    verbatim), then the original keywords for breadth. Cap so a single
+    direction with many recalled names doesn't dominate the per-query
+    budget across all directions.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for name in direction.recalled_dataset_names:
+        norm = name.strip()
+        if norm and norm.lower() not in seen:
+            seen.add(norm.lower())
+            out.append(norm)
+        if len(out) >= _KEYWORDS_PER_DIRECTION:
+            break
+    for kw in direction.keywords:
+        norm = kw.strip()
+        if norm and norm.lower() not in seen:
+            seen.add(norm.lower())
+            out.append(norm)
+        if len(out) >= _KEYWORDS_PER_DIRECTION:
+            break
+    if out:
+        return out
     return [direction.name.replace("_", " ")]
 
 

@@ -96,6 +96,13 @@ class DecompositionDirection(BaseModel):
     # that complement the decomposer's academic-vocabulary keywords.
     # When empty, sources fall back to `keywords`.
     dataset_keywords: list[str] = Field(default_factory=list)
+    # Populated by the keyword-expansion stage: specific NAMED datasets,
+    # benchmarks, or research lines plausibly relevant to the brief —
+    # e.g. "PersonaChat", "MMLU", "XSTest", "or-bench". Generic compound
+    # nouns miss these because dataset uploaders use the proper noun in
+    # the id (`google/Synthetic-Persona-Chat`) rather than a description.
+    # The HF source issues these verbatim (no auto-shortening).
+    recalled_dataset_names: list[str] = Field(default_factory=list)
 
 
 # ─── Candidate metadata envelope ─────────────────────────────────────
