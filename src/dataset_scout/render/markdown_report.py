@@ -147,21 +147,6 @@ def render_recon_report(result: ReconResult) -> str:
                 buf.write(f"  - expected: {d.expected_finds}\n")
         buf.write("\n")
 
-    # ─── Run summary ────────────────────────────────────────────
-    buf.write("## Run summary\n\n")
-    buf.write(f"- Sources searched: {', '.join(result.sources_searched) or '(none)'}\n")
-    buf.write(f"- Candidates returned: **{len(result.candidates)}**\n")
-    if has_strategies:
-        assessed = sum(1 for sc in result.candidates if sc.strategies)
-        buf.write(f"- Strategy-assessed: **{assessed}**\n")
-    buf.write(f"- Wall-clock: {result.elapsed_seconds:.2f}s\n")
-    buf.write(f"- dataset-scout version: {result.scout_version}\n")
-    if result.notices:
-        buf.write("\n### Notices\n\n")
-        for n in result.notices:
-            buf.write(f"- {n}\n")
-    buf.write("\n")
-
     if result.candidates:
         if has_strategies:
             _render_at_a_glance(buf, ctx)
@@ -217,6 +202,21 @@ def render_recon_report(result: ReconResult) -> str:
     # ─── Next steps: recipe + curate preview ────────────────────
     if ctx.show_recipe_preview:
         _render_recipe_preview(buf, ctx)
+
+    # ─── Run summary (footer-position) ──────────────────────────
+    buf.write("## Run summary\n\n")
+    buf.write(f"- Sources searched: {', '.join(result.sources_searched) or '(none)'}\n")
+    buf.write(f"- Candidates returned: **{len(result.candidates)}**\n")
+    if has_strategies:
+        assessed = sum(1 for sc in result.candidates if sc.strategies)
+        buf.write(f"- Strategy-assessed: **{assessed}**\n")
+    buf.write(f"- Wall-clock: {result.elapsed_seconds:.2f}s\n")
+    buf.write(f"- dataset-scout version: {result.scout_version}\n")
+    if result.notices:
+        buf.write("\n### Notices\n\n")
+        for n in result.notices:
+            buf.write(f"- {n}\n")
+    buf.write("\n")
 
     buf.write("\n---\n\n")
     buf.write(
