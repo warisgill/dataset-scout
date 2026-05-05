@@ -416,7 +416,6 @@ def run_recon(
     # ─── Strategy assessment + coverage (M2b) ──
     semantic_gaps: list[CoverageGap] = []
     if use_llm and scorecards:
-        from dataset_scout.coverage import build_coverage_report
         from dataset_scout.shortlist import select_top_for_assessor
         from dataset_scout.strategy import assess_strategies
 
@@ -450,22 +449,31 @@ def run_recon(
             )
         _emit(ProgressEventKind.STAGE_FINISHED, stage="assess")
 
-        if any(sc.strategies for sc in scorecards):
-            _emit(ProgressEventKind.STAGE_STARTED, stage="coverage")
-            try:
-                semantic_gaps = build_coverage_report(intent, directions, scorecards, ctx=ctx)
-            except LLMError as exc:
-                notices.append(f"coverage report skipped: {exc}")
-                semantic_gaps = []
-            _emit(
-                ProgressEventKind.STAGE_FINISHED,
-                stage="coverage",
-                message=f"identified {len(semantic_gaps)} gap(s)",
-            )
+    # Coverage gap synthesis runs whenever the LLM is available and we
+    # have directions — including when zero candidates returned.
+    # For frontier-territory briefs the gap analysis IS the deliverable;
+    # gating it on `any(sc.strategies)` would silently swallow the most
+    # useful artefact for exactly the briefs that need it most.
+    if use_llm and directions:
+        from dataset_scout.coverage import build_coverage_report
 
-            # Re-rank scorecards by best_strategy + kind bonus so the
-            # report leads with the strongest fits. Candidates without
-            # an assessed strategy keep their relative order at the bottom.
+        _emit(ProgressEventKind.STAGE_STARTED, stage="coverage")
+        try:
+            semantic_gaps = build_coverage_report(intent, directions, scorecards, ctx=ctx)
+        except LLMError as exc:
+            notices.append(f"coverage report skipped: {exc}")
+            semantic_gaps = []
+        _emit(
+            ProgressEventKind.STAGE_FINISHED,
+            stage="coverage",
+            message=f"identified {len(semantic_gaps)} gap(s)",
+        )
+
+        # Re-rank scorecards by best_strategy + kind bonus so the report
+        # leads with the strongest fits. Candidates without an assessed
+        # strategy keep their relative order at the bottom. (No-op when
+        # there are no strategies, which is the empty-candidates path.)
+        if any(sc.strategies for sc in scorecards):
             scorecards.sort(key=_strategy_rank_key, reverse=True)
 
     elapsed = time.monotonic() - started

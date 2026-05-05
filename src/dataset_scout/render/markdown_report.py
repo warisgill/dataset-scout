@@ -162,39 +162,41 @@ def render_recon_report(result: ReconResult) -> str:
             buf.write(f"- {n}\n")
     buf.write("\n")
 
-    if not result.candidates:
-        buf.write("No candidates were returned. Try broadening the brief.\n")
-        return buf.getvalue()
-
-    # ─── Coverage gaps (non-leading; below candidates section) ──
-    # When gaps aren't notable, we render them below candidates instead
-    # of leading with them.
-
-    buf.write("## Candidates\n\n")
-    if has_strategies:
-        buf.write(
-            "Listed in **best-strategy order.** Each candidate's "
-            "primary strategy and confidence are shown; review caveats\n"
-            "before committing.\n\n"
-        )
-    elif has_decomposition:
-        buf.write(
-            "Listed in search-relevance order, deduped across the "
-            "original brief and decomposition directions. The "
-            "`surfaced by` annotation\n"
-            "on each candidate shows which direction(s) found it.\n\n"
-        )
+    if result.candidates:
+        buf.write("## Candidates\n\n")
+        if has_strategies:
+            buf.write(
+                "Listed in **best-strategy order.** Each candidate's "
+                "primary strategy and confidence are shown; review caveats\n"
+                "before committing.\n\n"
+            )
+        elif has_decomposition:
+            buf.write(
+                "Listed in search-relevance order, deduped across the "
+                "original brief and decomposition directions. The "
+                "`surfaced by` annotation\n"
+                "on each candidate shows which direction(s) found it.\n\n"
+            )
+        else:
+            buf.write(
+                "Listed in **search-relevance order from the source.** "
+                "This is not a fitness ranking — embedding fit and the "
+                "strategy assessor land in a follow-up milestone.\n\n"
+            )
+        for i, sc in enumerate(result.candidates, start=1):
+            _render_candidate(buf, i, sc)
     else:
         buf.write(
-            "Listed in **search-relevance order from the source.** "
-            "This is not a fitness ranking — embedding fit and the "
-            "strategy assessor land in a follow-up milestone.\n\n"
+            "_No HuggingFace candidates were returned — see notices "
+            "above. The decomposition, coverage gaps, and related papers "
+            "below are your sourcing roadmap; for novel territory, the "
+            "data often lives outside HF (academic repositories, vendor "
+            "telemetry, web archives)._\n\n"
         )
-    for i, sc in enumerate(result.candidates, start=1):
-        _render_candidate(buf, i, sc)
 
     # When gaps exist but weren't notable enough to lead the report,
-    # render them after candidates.
+    # render them after candidates. Also covers the empty-candidates
+    # path: the gaps section runs regardless.
     if (
         result.coverage
         and result.coverage.semantic_gaps
