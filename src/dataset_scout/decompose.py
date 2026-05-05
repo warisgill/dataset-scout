@@ -193,7 +193,7 @@ def decompose_intent(
     intent: Intent,
     *,
     ctx: ScoutContext,
-    timeout_s: float = 30.0,
+    timeout_s: float = 60.0,
     cache: Cache | None = None,
 ) -> list[DecompositionDirection]:
     """Ask the AOAI deployment for 3-7 related search directions.
@@ -225,7 +225,9 @@ def decompose_intent(
     cache_key: str | None = None
     if cache is not None:
         cache_key = hashlib.sha256(
-            (DECOMPOSE_VERSION + "\n" + prompt).encode("utf-8")
+            (DECOMPOSE_VERSION + "\n" + (ctx.aoai_deployment or "") + "\n" + prompt).encode(
+                "utf-8"
+            )
         ).hexdigest()
         cached = cache.get_json("decompose", cache_key)
         if cached is not None:
@@ -270,10 +272,15 @@ def decompose_intent(
 
     last_parse_error: Exception | None = None
     parsed: DecomposeResponse | None = None
-    for _attempt in range(2):
+    for attempt in range(2):
         try:
             response = litellm.completion(**completion_kwargs)
         except Exception as exc:
+            # Retry once on timeout-class errors (Azure OpenAI under load
+            # can take 30-60s for some prompts). Other errors fail fast.
+            err_text = str(exc).lower()
+            if attempt == 0 and ("timeout" in err_text or "timed out" in err_text):
+                continue
             raise LLMError(f"LLM call failed: {exc}") from exc
 
         content = _extract_content(response)

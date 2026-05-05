@@ -366,7 +366,7 @@ def assess_strategies(
     intent: Intent,
     *,
     ctx: ScoutContext,
-    timeout_s: float = 30.0,
+    timeout_s: float = 60.0,
     source: Source | None = None,
     sample_n: int = 8,
     cache: Cache | None = None,
@@ -413,7 +413,9 @@ def assess_strategies(
     cache_key: str | None = None
     if cache is not None:
         cache_key = hashlib.sha256(
-            (ASSESSOR_VERSION + "\n" + prompt).encode("utf-8")
+            (ASSESSOR_VERSION + "\n" + (ctx.aoai_deployment or "") + "\n" + prompt).encode(
+                "utf-8"
+            )
         ).hexdigest()
         cached = cache.get_json("strategy", cache_key)
         if cached is not None:
@@ -436,10 +438,13 @@ def assess_strategies(
 
     last_parse_error: Exception | None = None
     parsed: AssessorResponse | None = None
-    for _attempt in range(2):
+    for attempt in range(2):
         try:
             response = litellm.completion(**completion_kwargs)
         except Exception as exc:
+            err_text = str(exc).lower()
+            if attempt == 0 and ("timeout" in err_text or "timed out" in err_text):
+                continue
             raise LLMError(f"LLM call failed: {exc}") from exc
 
         content = extract_content(response)

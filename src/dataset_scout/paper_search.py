@@ -73,7 +73,7 @@ _DEFAULT_LIMIT = 50
 
 # Default ceiling on papers retained per recon, after dedupe across
 # queries and venues. Keeps the report scannable.
-_DEFAULT_MAX_PAPERS = 12
+_DEFAULT_MAX_PAPERS = 20
 
 # Window of recent years to query.
 _DEFAULT_YEAR_WINDOW = 4
@@ -124,6 +124,31 @@ _VENUE_ALIASES: dict[str, list[str]] = {
         "NAACL",
         "North American Chapter of the Association for Computational Linguistics",
     ],
+    # Ethics / fairness / HCI / general-AI venues. AI-safety briefs
+    # frequently surface here before (or instead of) the core ML venues:
+    # parasocial / companionship / harms-of-AI work especially.
+    "FAccT": [
+        "FAccT",
+        "ACM Conference on Fairness, Accountability, and Transparency",
+        "Conference on Fairness, Accountability, and Transparency",
+    ],
+    "AIES": [
+        "AIES",
+        "AAAI/ACM Conference on AI, Ethics, and Society",
+    ],
+    "AAAI": [
+        "AAAI",
+        "AAAI Conference on Artificial Intelligence",
+    ],
+    "CHI": [
+        "CHI",
+        "Conference on Human Factors in Computing Systems",
+        "ACM CHI Conference on Human Factors in Computing Systems",
+    ],
+    "COLM": [
+        "COLM",
+        "Conference on Language Modeling",
+    ],
     # arXiv preprints — much frontier AI-safety work lives here before
     # any peer-reviewed venue. S2 indexes them with venue="arXiv.org".
     "arXiv": ["arXiv.org"],
@@ -137,6 +162,13 @@ _VENUE_CANONICAL: dict[str, str] = {
 }
 
 
+# Special token: when 'all' appears in the venue selection, the venue
+# filter is dropped entirely. Lets users cast the widest net (catches
+# health journals, ethics workshops, niche conferences) at the cost of
+# some lexical-noise risk. The query itself still constrains relevance.
+ALL_VENUES_SENTINEL = "all"
+
+
 DEFAULT_VENUES: tuple[str, ...] = (
     "NeurIPS",
     "ICML",
@@ -145,6 +177,11 @@ DEFAULT_VENUES: tuple[str, ...] = (
     "ACL",
     "EMNLP",
     "NAACL",
+    "FAccT",
+    "AIES",
+    "AAAI",
+    "CHI",
+    "COLM",
     "arXiv",
 )
 
@@ -158,9 +195,17 @@ def canonical_venue(raw: str) -> str:
 
 
 def venue_filter_value(venues: Iterable[str]) -> str:
-    """Build the comma-separated `venue` parameter for S2's search/bulk."""
+    """Build the comma-separated `venue` parameter for S2's search/bulk.
+
+    Returns an empty string when the special `ALL_VENUES_SENTINEL`
+    appears in the input — caller is responsible for omitting the
+    `venue` param entirely from the request.
+    """
+    venues_list = list(venues)
+    if any(v.lower() == ALL_VENUES_SENTINEL for v in venues_list):
+        return ""
     expanded: list[str] = []
-    for v in venues:
+    for v in venues_list:
         aliases = _VENUE_ALIASES.get(v, [v])
         expanded.extend(aliases)
     # De-dupe preserving order.
@@ -171,6 +216,11 @@ def venue_filter_value(venues: Iterable[str]) -> str:
             seen.add(a)
             out.append(a)
     return ",".join(out)
+
+
+def is_all_venues(venues: Iterable[str]) -> bool:
+    """True iff the venue selection is the broaden-everything sentinel."""
+    return any(v.lower() == ALL_VENUES_SENTINEL for v in venues)
 
 
 # ─── extraction ─────────────────────────────────────────────────────
@@ -481,11 +531,18 @@ def _fetch_one(
 
     params: dict[str, str] = {
         "query": query,
-        "venue": venue_filter_value(venues_list),
         "year": f"{year_range[0]}-{year_range[1]}",
         "fields": _S2_FIELDS,
         "limit": str(_DEFAULT_LIMIT),
     }
+    # Omit the `venue` param entirely when the user opts into "all":
+    # S2 then searches every indexed venue, including health journals
+    # and niche workshops where AI-safety-adjacent work occasionally
+    # lives. The query alone constrains relevance.
+    if not is_all_venues(venues_list):
+        venue_param = venue_filter_value(venues_list)
+        if venue_param:
+            params["venue"] = venue_param
     payload: Any = None
     for attempt in range(2):
         try:

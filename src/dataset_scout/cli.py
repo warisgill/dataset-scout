@@ -153,8 +153,11 @@ def recon(
             "--venues",
             help=(
                 "Comma-separated venue list for paper discovery. "
-                "Defaults to NeurIPS,ICML,ICLR,SaTML,ACL,EMNLP,NAACL,arXiv. "
-                "Use --venues NeurIPS,ICML to narrow."
+                "Defaults to a curated set of 13 ML / NLP / ethics / HCI venues "
+                "(NeurIPS, ICML, ICLR, SaTML, ACL, EMNLP, NAACL, FAccT, AIES, "
+                "AAAI, CHI, COLM, arXiv). Use `--venues all` to drop the venue "
+                "filter entirely (catches health journals + niche workshops at "
+                "the cost of more noise). Use `--venues NeurIPS,ICML` to narrow."
             ),
         ),
     ] = None,

@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from dataset_scout.sources.base import Source
 
 
-_DEFAULT_MAX_CANDIDATES = 50
+_DEFAULT_MAX_CANDIDATES = 100
 
 
 # Single source of truth for the metadata-only-mode notice. Used by both

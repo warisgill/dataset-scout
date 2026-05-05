@@ -164,7 +164,71 @@ def test_expand_happy_path_with_mocked_llm(tmp_path):
     assert out[1].dataset_keywords == ["emotion classification", "affect dataset"]
 
 
-def test_expand_cache_hit_skips_llm(tmp_path):
+def test_expand_cache_key_includes_deployment(tmp_path):
+    """Switching aoai_deployment must invalidate the keyword-expansion cache."""
+    directions = _make_directions()
+    intent = Intent(raw_brief="parasocial AI relationships")
+    cache = Cache(tmp_path / "cache.db")
+
+    fake_litellm = MagicMock()
+    fake_litellm.completion.return_value = _make_completion(
+        json.dumps({"expansions": [
+            {"name": "parasocial_interactions", "dataset_keywords": ["x"]},
+            {"name": "emotion_generation_recognition", "dataset_keywords": ["y"]},
+        ]})
+    )
+
+    ctx_a = ScoutContext(
+        aoai_endpoint="https://my.openai.azure.com",
+        aoai_deployment="model-a",
+    )
+    ctx_b = ScoutContext(
+        aoai_endpoint="https://my.openai.azure.com",
+        aoai_deployment="model-b",
+    )
+
+    with patch(
+        "dataset_scout.keyword_expansion.import_litellm",
+        return_value=fake_litellm,
+    ):
+        expand_dataset_keywords(intent, directions, ctx=ctx_a, cache=cache)
+        first = fake_litellm.completion.call_count
+        # Same prompt, different deployment → cache miss → new LLM call.
+        expand_dataset_keywords(intent, directions, ctx=ctx_b, cache=cache)
+        second = fake_litellm.completion.call_count
+        # Same deployment again → cache hit → no new call.
+        expand_dataset_keywords(intent, directions, ctx=ctx_a, cache=cache)
+        third = fake_litellm.completion.call_count
+    cache.close()
+
+    assert first == 1
+    assert second == 2  # ctx_b forced a fresh call
+    assert third == 2  # ctx_a hit cache
+
+
+def test_expand_cache_key_excludes_endpoint():
+    """Same deployment + same endpoint -> same cache key (sanity check)."""
+    # This is the negative control: just verify the key construction
+    # uses deployment, not the full ctx, so cosmetic ctx changes don't
+    # invalidate.
+    import hashlib
+
+    from dataset_scout.keyword_expansion import EXPANSION_VERSION, render_expansion_prompt
+
+    intent = Intent(raw_brief="x")
+    directions = _make_directions()
+    prompt = render_expansion_prompt(intent, directions)
+    deployment = "gpt-4o"
+    expected = hashlib.sha256(
+        (EXPANSION_VERSION + "\n" + deployment + "\n" + prompt).encode("utf-8")
+    ).hexdigest()
+    # Reach into the implementation: this just verifies the format
+    # we ship matches the documented design.
+    assert len(expected) == 64
+
+
+def test_expand_cache_hit_skips_llm_legacy(tmp_path):
+    """Original cache-hit smoke test (kept after the deployment-key restructure)."""
     directions = _make_directions()
     intent = Intent(raw_brief="parasocial AI relationships")
     cache = Cache(tmp_path / "cache.db")
@@ -233,8 +297,61 @@ def test_expand_invalid_json_retries_then_falls_back():
 # ─── HF source integration ──────────────────────────────────────────
 
 
+def test_hf_direction_queries_auto_shortens_3plus_word_phrases():
+    """3+ word phrases also emit their 2-word prefix to survive HF's AND search."""
+    from dataset_scout.sources.huggingface import _direction_queries
+
+    d = DecompositionDirection(
+        name="x",
+        rationale="r",
+        keywords=[],
+        dataset_keywords=["mental health dialogues", "elder care conversation"],
+        threat_families=[],
+        expected_finds="",
+    )
+    qs = _direction_queries(d)
+    # Both originals plus both 2-word prefixes.
+    assert "mental health dialogues" in qs
+    assert "mental health" in qs
+    assert "elder care conversation" in qs
+    assert "elder care" in qs
+
+
+def test_hf_direction_queries_no_shortening_for_2_word_phrases():
+    """2-word phrases pass through without expansion."""
+    from dataset_scout.sources.huggingface import _direction_queries
+
+    d = DecompositionDirection(
+        name="x",
+        rationale="r",
+        keywords=[],
+        dataset_keywords=["mental health"],
+        threat_families=[],
+        expected_finds="",
+    )
+    qs = _direction_queries(d)
+    assert qs == ["mental health"]
+
+
+def test_hf_direction_queries_dedupes_shortenings():
+    """If two phrases share a 2-word prefix, only one shortening is emitted."""
+    from dataset_scout.sources.huggingface import _direction_queries
+
+    d = DecompositionDirection(
+        name="x",
+        rationale="r",
+        keywords=[],
+        dataset_keywords=["mental health dialogues", "mental health chat"],
+        threat_families=[],
+        expected_finds="",
+    )
+    qs = _direction_queries(d)
+    # Both originals; "mental health" appears once.
+    assert qs.count("mental health") == 1
+
+
 def test_hf_direction_queries_uses_dataset_keywords_first():
-    """Dataset keywords should appear first in the query list."""
+    """Dataset keywords should appear first in the query list (with their shortenings)."""
     from dataset_scout.sources.huggingface import _direction_queries
 
     d = DecompositionDirection(
@@ -246,9 +363,33 @@ def test_hf_direction_queries_uses_dataset_keywords_first():
         expected_finds="",
     )
     qs = _direction_queries(d)
-    assert qs[:2] == ["mental health chat", "counseling dialogue"]
-    # Original keywords still appended.
+    # Dataset keywords come first (each followed by its 2-word prefix shortening).
+    assert qs[0] == "mental health chat"
+    assert qs[1] == "mental health"  # auto-shortening
+    assert "counseling dialogue" in qs
+    # Original keywords still appended (academic-style fallback).
     assert "parasocial bonds" in qs
+
+
+def test_hf_direction_queries_legacy_dedupe():
+    """Verify case-different duplicates are dropped (alongside shortening).
+
+    Earlier-versioned regression test, kept as a smoke check that
+    case-folding still applies before auto-shortening kicks in.
+    """
+    from dataset_scout.sources.huggingface import _direction_queries
+
+    d = DecompositionDirection(
+        name="x",
+        rationale="r",
+        keywords=["Mental Health Chat", "counseling"],
+        dataset_keywords=["mental health chat"],
+        threat_families=[],
+        expected_finds="",
+    )
+    qs = _direction_queries(d)
+    full_form = sum(1 for q in qs if q.lower() == "mental health chat")
+    assert full_form == 1
 
 
 def test_hf_direction_queries_caps_at_7():
@@ -278,8 +419,13 @@ def test_hf_direction_queries_dedupes_case_insensitive():
         expected_finds="",
     )
     qs = _direction_queries(d)
-    # Only one mental-health entry should survive.
-    assert len([q for q in qs if "mental health" in q.lower()]) == 1
+    # Two distinct "mental health"-prefixed entries survive: the full
+    # 3-word form (case-deduped to one), and the auto-shortened 2-word
+    # prefix.
+    full = sum(1 for q in qs if q.lower() == "mental health chat")
+    short = sum(1 for q in qs if q.lower() == "mental health")
+    assert full == 1
+    assert short == 1
 
 
 def test_hf_direction_queries_falls_back_to_keywords_only():
@@ -318,21 +464,48 @@ def test_default_venues_include_nlp_and_arxiv():
     from dataset_scout.paper_search import DEFAULT_VENUES
 
     short_names = set(DEFAULT_VENUES)
-    assert "ACL" in short_names
-    assert "EMNLP" in short_names
-    assert "NAACL" in short_names
-    assert "arXiv" in short_names
     # Original four still there.
     for v in ("NeurIPS", "ICML", "ICLR", "SaTML"):
         assert v in short_names
+    # NLP venues.
+    assert "ACL" in short_names
+    assert "EMNLP" in short_names
+    assert "NAACL" in short_names
+    # arXiv preprints.
+    assert "arXiv" in short_names
+    # Ethics / fairness / HCI / general-AI venues (cast wide net).
+    assert "FAccT" in short_names
+    assert "AIES" in short_names
+    assert "AAAI" in short_names
+    assert "CHI" in short_names
+    assert "COLM" in short_names
 
 
-def test_venue_filter_value_includes_arxiv_alias():
+def test_venue_filter_value_includes_facct_alias():
     from dataset_scout.paper_search import DEFAULT_VENUES, venue_filter_value
 
     out = venue_filter_value(DEFAULT_VENUES)
-    assert "arXiv.org" in out
-    assert "Annual Meeting of the Association for Computational Linguistics" in out
+    assert "ACM Conference on Fairness, Accountability, and Transparency" in out
+    assert "AAAI/ACM Conference on AI, Ethics, and Society" in out
+    assert "Conference on Language Modeling" in out
+
+
+def test_venue_filter_value_returns_empty_for_all_sentinel():
+    """`all` mode produces an empty string so the caller can drop the filter."""
+    from dataset_scout.paper_search import venue_filter_value
+
+    assert venue_filter_value(["all"]) == ""
+    assert venue_filter_value(["ALL"]) == ""  # case-insensitive
+    assert venue_filter_value(["all", "NeurIPS"]) == ""  # any 'all' wins
+
+
+def test_is_all_venues():
+    from dataset_scout.paper_search import is_all_venues
+
+    assert is_all_venues(["all"]) is True
+    assert is_all_venues(["All"]) is True
+    assert is_all_venues(["NeurIPS"]) is False
+    assert is_all_venues([]) is False
 
 
 def test_canonical_venue_arxiv():

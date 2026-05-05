@@ -185,28 +185,56 @@ def _direction_queries(direction: DecompositionDirection) -> list[str]:
     entirely (uploaders don't write "parasocial bonds" in dataset ids).
 
     Strategy: prefer dataset_keywords (closer to how HF datasets are
-    named); fall back to keywords; union both with dedupe and cap at 5
+    named); fall back to keywords; union both with dedupe and cap at 7
     so the per-recon HF query budget stays bounded.
 
     Each phrase becomes its own HF `search=` query — substring matching
     means that joining all phrases into one query returns near-zero hits
     because no single dataset card contains every term in sequence.
     Round-robin across queries lives upstream in `search()`.
+
+    HF's lexical search is multi-word AND — every whitespace-separated
+    token must appear in the dataset id/card. Empirically:
+        "mental health" → 3 hits   "mental health dialogues" → 0 hits
+        "companion"     → 3 hits   "companion chatbot"      → 0 hits
+    Even semantically-correct compound nouns from the LLM frequently
+    fail this AND constraint when the third token doesn't happen to
+    appear next to the first two in any uploader's id. To compensate,
+    any phrase of 3+ tokens ALSO emits its 2-token prefix as a sibling
+    query (deduped). This catches the high-recall short form while
+    keeping the precise long form available for cards that DO contain it.
     """
     pool: list[str] = []
     seen: set[str] = set()
+
+    def _add(phrase: str) -> None:
+        norm = phrase.strip()
+        if not norm:
+            return
+        key = norm.lower()
+        if key in seen:
+            return
+        seen.add(key)
+        pool.append(norm)
+
+    def _add_with_shortenings(phrase: str) -> None:
+        norm = phrase.strip()
+        if not norm:
+            return
+        _add(norm)
+        # Auto-shorten 3+ word phrases to their 2-word prefix so HF's
+        # AND-search still hits something. "mental health dialogues" ->
+        # "mental health"; "elder care conversation" -> "elder care".
+        tokens = norm.split()
+        if len(tokens) >= 3:
+            _add(" ".join(tokens[:2]))
+
     # HF-uploader-style first (typically higher-precision for datasets).
     for kw in direction.dataset_keywords:
-        norm = kw.strip()
-        if norm and norm.lower() not in seen:
-            seen.add(norm.lower())
-            pool.append(norm)
+        _add_with_shortenings(kw)
     # Then academic-style as fallback / breadth.
     for kw in direction.keywords:
-        norm = kw.strip()
-        if norm and norm.lower() not in seen:
-            seen.add(norm.lower())
-            pool.append(norm)
+        _add_with_shortenings(kw)
     if pool:
         return pool[:7]
     # No keywords at all; degrade to direction name.

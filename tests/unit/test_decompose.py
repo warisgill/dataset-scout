@@ -187,7 +187,7 @@ def test_decompose_routes_via_azure_with_token_provider(
     assert callable(captured["azure_ad_token_provider"])
     assert "api_key" not in captured
 
-    assert captured["timeout"] == 30.0
+    assert captured["timeout"] == 60.0
     assert captured["response_format"] == {"type": "json_object"}
     msgs = captured["messages"]
     assert msgs[0]["role"] == "user"

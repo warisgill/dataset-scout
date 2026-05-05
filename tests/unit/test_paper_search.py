@@ -221,6 +221,31 @@ def test_find_papers_no_dataset_citations_yields_no_candidates():
 
 
 @respx.mock
+def test_find_papers_omits_venue_param_in_all_mode():
+    """`venues=['all']` drops the venue filter from the S2query."""
+    captured: dict[str, str] = {}
+
+    def _handler(request):
+        captured.update(request.url.params)
+        return httpx.Response(200, json={"data": [_s2_paper("p1", "T")]})
+
+    respx.get("https://api.semanticscholar.org/graph/v1/paper/search/bulk").mock(
+        side_effect=_handler
+    )
+    find_papers_and_promote(
+        _make_intent(),
+        directions=[],
+        venues=["all"],
+        client=httpx.Client(timeout=5.0),
+    )
+    # The 'venue' param should be absent entirely.
+    assert "venue" not in captured
+    # Other params still present.
+    assert "query" in captured
+    assert "year" in captured
+
+
+@respx.mock
 def test_find_papers_swallows_http_errors():
     """5xx from S2 returns ([], []) without raising."""
     respx.get("https://api.semanticscholar.org/graph/v1/paper/search/bulk").mock(

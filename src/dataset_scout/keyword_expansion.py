@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 
 
 # Bumped when the prompt or response handling changes.
-EXPANSION_VERSION = "2"
+EXPANSION_VERSION = "3"
 
 _MAX_KEYWORDS_PER_DIRECTION = 8
 
@@ -97,12 +97,22 @@ GOOD bridges (memorize these patterns):
              "system prompt extraction"
 
 PRINCIPLES:
-  - 1-4 words. "mental health" beats "user mental health logs".
+  - **PREFER 1-2 WORD PHRASES**. HF's lexical search is AND across
+    whitespace tokens, and 3-word phrases like "mental health
+    dialogues" return ZERO hits because no dataset id contains all
+    three. By contrast "mental health" (2 words) returns dozens.
+    Length matters more than specificity here.
+  - When you must use 3 words for clarity, prefer the form where
+    the 2-word prefix is also useful ("mental health chat" -> still
+    bridges to "mental health"). Avoid 3-word phrases where the
+    prefix would be meaningless ("ai realism benchmark" -> "ai
+    realism" is gibberish).
   - Use COMMON, EXISTING vocabulary -- terms a dataset uploader
     actually puts in an id (e.g. "mental_health_chat" → "mental health chat").
   - Bridge across AT LEAST 2 adjacent domains per direction.
   - Include shorter generalizations even if they look redundant
-    ("companionship" alongside "companion chat").
+    ("companionship" alongside "companion chat", "mental health"
+    alongside "mental health chat").
   - AVOID: invented-sounding compounds. "ai attachment logs",
     "parasocial conversations", "relationship claim corpus" -- these
     are NOT how anyone names datasets and HF returns zero results.
@@ -182,7 +192,9 @@ def expand_dataset_keywords(
     cache_key: str | None = None
     if cache is not None:
         cache_key = hashlib.sha256(
-            (EXPANSION_VERSION + "\n" + prompt).encode("utf-8")
+            (EXPANSION_VERSION + "\n" + (ctx.aoai_deployment or "") + "\n" + prompt).encode(
+                "utf-8"
+            )
         ).hexdigest()
         cached = cache.get_json("decompose", cache_key)
         if cached is not None:
