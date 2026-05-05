@@ -19,7 +19,7 @@ the JSON without taking a dep — the field set is documented here.
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `text` | string | yes | Row text used for downstream training/eval. |
-| `label` | `"positive" \| "benign" \| "hard_negative"` | yes | Three-class scout label. |
+| `label` | `"positive" \| "benign" \| "hard_negative"` | yes | Three-class scout label. `hard_negative` is a recon-side category for explicitly difficult negatives surfaced by strategy assessment; the M10 judge never *produces* `hard_negative` (it produces `positive` or `benign` only — see "judge label mapping" below). Downstream consumers may treat `benign` and `hard_negative` identically at the axis level (both are `not positive`) or distinguish them for sampling purposes; both are valid. |
 | `label_kind` | `"ground_truth" \| "remapped" \| "proxy" \| "subset_extracted" \| "judged"` | yes | Provenance of the label. `"judged"` indicates the LLM judge produced this label (M10). |
 | `strategy` | enum | yes | Recon-time strategy that selected the source row. |
 | `strategy_confidence` | float `0.0–1.0` | yes | Recon-time strategy confidence. |
@@ -48,7 +48,18 @@ When `label_kind == "judged"`, the `judge` field is populated with:
 | `model` | string | Judge model identifier, e.g. `"azure-openai/gpt-4o-2024-08"`. |
 | `template_version` | string | Scout-internal prompt version (used for cache audit; not coordinated externally). |
 | `n_judges` | int `≥ 1` | `1` for single-judge runs. |
-| `agreement` | `"single" \| "majority" \| "unanimous" \| null` | Multi-judge aggregation rule when `n_judges > 1`. |
+| `agreement` | `"single" \| "majority" \| "unanimous"` | Aggregation rule. Always populated by the M10 judge: `"single"` when `n_judges == 1`, otherwise `"majority"` or `"unanimous"` per the run's configuration. The pydantic model declares `... \| None` for forward compatibility, but consumers can rely on a non-null value from any scout-produced corpus. |
+
+## Judge label mapping (M10)
+
+The M10 judge emits one of three verdicts: `"positive"`, `"negative"`,
+or `"ambiguous"`. Mapped to scout's three-class `label` as follows:
+
+| Judge verdict | Scout `label` | Notes |
+|---|---|---|
+| `"positive"` | `"positive"` | Promoted only if `confidence >= threshold`. |
+| `"negative"` | `"benign"` | Promoted only if `confidence >= threshold`. The judge does **not** produce `"hard_negative"` — that's a recon-side category. |
+| `"ambiguous"` | *not promoted* | Row keeps its pre-existing label. `judge` block still written for review. |
 
 The *derived* row-level confidence (used by downstream filtering) is
 the top-level `label_confidence` field, **not** `judge.confidence`. For
