@@ -20,7 +20,7 @@ import hashlib
 import json
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from dataset_scout.core import DecompositionDirection, Intent
 from dataset_scout.errors import LLMError
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 # Bumped when prompt or response handling changes in a way that would
 # invalidate cached decomposition results.
-DECOMPOSE_VERSION = "2"
+DECOMPOSE_VERSION = "3"
 
 # Hard upper bound on directions returned (mirrors the prompt).
 _MAX_DIRECTIONS = 7
@@ -43,6 +43,11 @@ _AOAI_SCOPE = "https://cognitiveservices.azure.com/.default"
 class DecomposeResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
+    # Step-1 output of the two-step prompt. Stored on the response so
+    # callers (review flow, report rendering) can show users which
+    # research communities the model considered. Optional so older
+    # cached responses still parse.
+    adjacent_disciplines: list[str] = Field(default_factory=list)
     directions: list[DecompositionDirection]
 
 
@@ -54,20 +59,59 @@ class DecomposeResponse(BaseModel):
 # template stays readable inline. Sentinels are unambiguous strings
 # we know won't appear in the surrounding prose.
 _PROMPT_TEMPLATE = """\
-You are helping an AI security engineer find public datasets that are
-related to their detection target. Their stated brief and target are
-narrow; we want to expand the search net to find candidates that
-could contribute via reframing — proxy positives, hard negatives,
-benign baselines, subset extractions, or label remappings.
+You are helping an AI security engineer find public datasets related
+to their detection target. Their stated brief is narrow; we want to
+widen the search net so reframings of related work (proxy positives,
+hard negatives, benign baselines, subset extractions, label remappings)
+become discoverable.
 
 Brief: <<RAW_BRIEF>>
 Detection target: <<DETECTION_TARGET>>
 Threat families: <<THREAT_FAMILIES>>
 Deployment context: <<DEPLOYMENT_CONTEXT>>
 
-Propose 3-7 RELATED SEARCH DIRECTIONS adjacent to this target.
-Each direction should be a distinct angle the search should explore
-beyond the original brief, NOT a paraphrase of the brief itself.
+This is a TWO-STEP task. Step 1 forces breadth across communities;
+Step 2 grounds each direction in one of them so the search query
+draws from a real data ecosystem rather than abstract ML vocabulary.
+
+STEP 1 — ADJACENT DISCIPLINES
+============================
+Before listing any directions, identify 5-8 RESEARCH COMMUNITIES,
+PROFESSIONAL FIELDS, or DATA ECOSYSTEMS adjacent to this brief that
+have already accumulated relevant data. These should span distinct
+parent fields, not multiple framings of the same one.
+
+What makes a good entry:
+  - A specific community or ecosystem ("clinical-psychology research"
+    not "psychology"; "trust-and-safety policy teams" not "safety").
+  - At least 3 of them must come from DIFFERENT parent fields
+    (e.g., one from clinical sciences, one from social sciences,
+    one from CS/NLP). Don't list 5 sub-areas of NLP.
+  - Each one must plausibly have published, released, or indexed
+    datasets a researcher could find.
+
+Examples — for an arbitrary brief about content moderation:
+  - "trust-and-safety operations teams (released moderation logs)"
+  - "academic NLP toxicity-detection research"
+  - "platform-policy analysts and digital-rights orgs"
+  - "social-psychology studies of online harassment"
+  - "linguistics-of-deception researchers"
+
+Examples — for an arbitrary brief about hallucination detection:
+  - "fact-checking organizations"
+  - "NLP question-answering benchmark builders"
+  - "knowledge-base / linked-data communities"
+  - "journalism-research labs"
+  - "argument-mining / discourse-analysis academics"
+
+Be SPECIFIC. "AI research" alone is too broad. Each entry should
+hint at the *kind of data* that community produces.
+
+STEP 2 — DIRECTIONS GROUNDED IN DISCIPLINES
+============================================
+Now propose 3-7 search directions. Each direction MUST cite which
+discipline from Step 1 it taps into. This forces breadth: you cannot
+list 5 directions that all draw from the same parent field.
 
 Each direction's `keywords` should be SHORT, LEXICAL search terms a
 substring keyword search engine would match. HF's search is literal
@@ -75,21 +119,21 @@ substring matching — short 2-3 word phrases ("prompt injection",
 "jailbreak prompts") work well; long phrases ("Python AttributeError
 missing method definition") almost never hit. Avoid full sentences.
 
-Where the keyword would be ambiguous on its own (e.g. "wrong
-answer", which would match every MCQA dataset on the Hub), prefer
-a domain-anchored variant ("code wrong answer", "API misuse").
-A bare generic phrase that could apply to any topic returns more
-noise than signal. Strong alternative: pick a more specific term
-that already implies the domain (e.g. "ImportError",
-"NoSuchMethodException") rather than "missing import" + a
-manually-prepended anchor.
+Where the keyword would be ambiguous on its own (e.g. "wrong answer",
+which would match every MCQA dataset on the Hub), prefer a
+domain-anchored variant ("code wrong answer", "API misuse").
 
 Return JSON matching this schema:
 {
+  "adjacent_disciplines": [
+    "<discipline 1>",
+    "<discipline 2>",
+    ...
+  ],
   "directions": [
     {
       "name": "snake_case_short_name",
-      "rationale": "1-2 sentences on why this is relevant",
+      "rationale": "1-2 sentences. MUST start with: 'Drawing on <one of the disciplines from Step 1>:' so the grounding is visible.",
       "keywords": ["term", "term", "term"],
       "threat_families": ["family", ...],
       "expected_finds": "1 sentence on what useful data we'd hope to find"
@@ -98,8 +142,15 @@ Return JSON matching this schema:
   ]
 }
 
-Be conservative-but-creative. Do NOT include directions you cannot
-defend. Aim for 3-5 strong directions; up to 7 if genuinely warranted.
+Constraints:
+  - 5-8 adjacent disciplines. Pick from at least 3 different parent fields.
+  - 3-7 directions. Each direction's rationale starts with
+    "Drawing on <discipline>:" and that discipline must appear in
+    the adjacent_disciplines list.
+  - At least 3 of the directions must draw on DIFFERENT disciplines
+    (don't ground 5 directions in the same one).
+  - Be conservative-but-creative. Do NOT include directions you
+    cannot defend.
 """
 
 

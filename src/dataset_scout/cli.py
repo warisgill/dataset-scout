@@ -68,6 +68,104 @@ def _load_dotenv() -> Path | None:
     return None
 
 
+def _interactive_review_decomposition(
+    *,
+    brief: str,
+    intent: Any,
+    ctx: Any,
+    out: Path,
+) -> list[Any] | None:
+    """Pause after decomposition; show directions; let user approve/edit/abort.
+
+    Returns the (possibly edited) direction list, or None if the user
+    aborted. The decomposition is written to `<out>/decomposition.yaml`
+    so a subsequent run can resume via `--decomposition-from`.
+
+    Cross-platform editor handling via `typer.edit()` (delegates to
+    click.edit, which honours $EDITOR / $VISUAL or falls back to a
+    sensible per-OS default).
+    """
+    from dataset_scout.decompose import decompose_intent
+    from dataset_scout.decomposition_io import load_decomposition, write_decomposition
+    from dataset_scout.errors import LLMError
+
+    out.mkdir(parents=True, exist_ok=True)
+
+    # Run decompose. Failures fall through to no-review path: print the
+    # error and return None so caller can abort.
+    err.print("[dim]Running brief decomposition…[/dim]")
+    try:
+        directions = decompose_intent(intent, ctx=ctx)
+    except LLMError as exc:
+        err.print(f"[yellow]Decomposition failed: {exc}[/yellow]")
+        err.print("[yellow]Cannot enter --review mode without an LLM. Aborting.[/yellow]")
+        return None
+
+    if not directions:
+        err.print("[yellow]Decomposer returned 0 directions.[/yellow]")
+        return None
+
+    # Write to canonical location so the user can edit it.
+    yaml_path = write_decomposition(directions, out)
+    if yaml_path is None:
+        err.print("[yellow]Could not write decomposition.yaml; aborting review.[/yellow]")
+        return None
+
+    while True:
+        _print_directions_for_review(directions)
+        err.print(
+            f"\n[bold]decomposition.yaml:[/bold] {yaml_path}\n"
+            "[bold]Press Enter to continue · [e] to edit in $EDITOR · [a] to abort[/bold]"
+        )
+        choice = typer.prompt(">", default="", show_default=False).strip().lower()
+        if choice in {"", "c", "continue", "y", "yes"}:
+            return directions
+        if choice in {"a", "abort", "n", "no", "q", "quit"}:
+            err.print(
+                f"[yellow]Aborted.[/yellow] Decomposition saved to {yaml_path}; "
+                "resume later with `datascout recon ... --decomposition-from "
+                f"{yaml_path}`."
+            )
+            return None
+        if choice in {"e", "edit"}:
+            edited_text = typer.edit(yaml_path.read_text(encoding="utf-8"))
+            if edited_text is None:
+                # Editor was closed without saving (or unavailable).
+                err.print("[yellow]No changes detected; using original directions.[/yellow]")
+                return directions
+            yaml_path.write_text(edited_text, encoding="utf-8")
+            try:
+                directions = load_decomposition(yaml_path)
+            except Exception as exc:
+                err.print(
+                    f"[red]Edited YAML failed to parse:[/red] {exc}\n"
+                    "Fix the file (it's still on disk) and choose [e] again."
+                )
+                continue
+            err.print(
+                f"[green]✓ Reloaded {len(directions)} direction(s).[/green]"
+            )
+            # Show the updated set and prompt again.
+            continue
+        err.print(f"[yellow]Unrecognised choice: {choice!r}. Try again.[/yellow]")
+
+
+def _print_directions_for_review(directions: list[Any]) -> None:
+    """Render the decomposition for terminal review. Compact, scannable."""
+    err.print("\n[bold]Proposed search directions[/bold]\n")
+    for i, d in enumerate(directions, start=1):
+        err.print(f"  [bold cyan]{i}. {d.name}[/bold cyan]")
+        rationale = d.rationale.strip()
+        if len(rationale) > 200:
+            rationale = rationale[:197] + "…"
+        err.print(f"     {rationale}")
+        if d.keywords:
+            err.print(f"     [dim]keywords:[/dim] {', '.join(d.keywords)}")
+        if d.dataset_keywords:
+            err.print(f"     [dim]dataset terms:[/dim] {', '.join(d.dataset_keywords[:6])}")
+        err.print("")
+
+
 @app.callback()
 def _root(
     version: Annotated[
@@ -168,6 +266,21 @@ def recon(
             help="Exclude arXiv preprints from paper discovery (peer-reviewed only).",
         ),
     ] = False,
+    review: Annotated[
+        bool,
+        typer.Option(
+            "--review",
+            "-r",
+            help=(
+                "Pause after decomposition to review or edit the search "
+                "directions before paying for the full recon. Opens "
+                "decomposition.yaml in $EDITOR; press Enter to continue, "
+                "[e] to edit, [a] to abort. The 5-second human override "
+                "is often the difference between finding the right "
+                "datasets and missing them."
+            ),
+        ),
+    ] = False,
 ) -> None:
     from dataset_scout.context import ScoutContext
     from dataset_scout.decomposition_io import load_decomposition, write_decomposition
@@ -201,6 +314,22 @@ def recon(
         except Exception as e:
             err.print(f"[red]error:[/red] failed to load decomposition: {e}")
             raise typer.Exit(code=1) from e
+
+    # Human-in-the-loop review: run decompose now, show the directions,
+    # let the user edit / approve, then pass the result as a
+    # directions_override so run_recon skips its own decompose call.
+    # Skipped when --no-explore or --decomposition-from is set, since
+    # both already provide the directions explicitly.
+    if review and not no_explore and directions_override is None:
+        from dataset_scout.intent import HeuristicIntentParser
+
+        intent = HeuristicIntentParser().parse(brief, **overrides)
+        directions_override = _interactive_review_decomposition(
+            brief=brief, intent=intent, ctx=ctx, out=out
+        )
+        if directions_override is None:
+            # User aborted.
+            raise typer.Exit(code=130)
 
     # Build the paper-search callable with the user's venue selection
     # baked in (or False to disable entirely).
