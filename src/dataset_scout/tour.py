@@ -225,6 +225,14 @@ def _scorecard(
             value=1.0 if license_spdx in {"MIT", "Apache-2.0", "CC-BY-4.0"} else None,
             evidence=[
                 Evidence(kind="license_spdx", detail=license_spdx or "(unknown)"),
+                Evidence(
+                    kind="policy_match",
+                    detail=(
+                        "allow"
+                        if license_spdx in {"MIT", "Apache-2.0", "CC-BY-4.0"}
+                        else "outside_policy"
+                    ),
+                ),
             ],
         ),
         "freshness": SubScore(

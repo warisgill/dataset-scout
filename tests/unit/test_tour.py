@@ -24,11 +24,17 @@ def test_render_tour_includes_all_sections():
     md = render_tour(out_dir=None)
     assert "# dataset-scout recon report" in md
     assert "## Decomposition" in md
-    assert "## Candidates" in md
+    # New grouped layout: cards live under strategy-kind sections
+    # ("🎯 Direct fits", "🔁 Reframings", etc.) plus an at-a-glance
+    # scoreboard, instead of the legacy flat "## Candidates" header.
+    assert "## At a glance" in md
+    assert "Direct fits" in md or "Reframings" in md or "Signal proxies" in md
     # Strategy assessment present (any framing).
     assert "Strategy" in md or "strategy" in md
     assert "## Sourcing roadmap" in md or "Coverage gap" in md
     assert "**Strategies:**" in md
+    # The new recipe / curate preview bridges discovery to next action.
+    assert "Next steps" in md or "recipe & curate" in md
 
 
 def test_render_tour_persists_artefacts(tmp_path: Path):

@@ -23,7 +23,11 @@ from dataset_scout.core import (
     StrategyKind,
     SubScore,
 )
-from dataset_scout.render._view import ReconReportContext
+from dataset_scout.render._view import (
+    CardVerdict,
+    ReconReportContext,
+    StrategyGroup,
+)
 
 # ─── public entry points ───────────────────────────────────────────
 
@@ -46,15 +50,19 @@ def render_recon_report_html(result: ReconResult) -> str:
     _write_brief_section(buf, result)
     if ctx.show_gaps_lead and result.coverage:
         _write_gaps_section(buf, result, lead=True)
-    if ctx.has_decomposition and result.coverage:
-        _write_decomposition_section(buf, result)
-    _write_run_summary(buf, result, ctx)
+    if ctx.has_strategies:
+        _write_at_a_glance(buf, ctx)
     if result.candidates:
         _write_candidates_section(buf, result, ctx)
+    if ctx.has_decomposition and result.coverage:
+        _write_decomposition_section(buf, result)
     if result.coverage and result.coverage.semantic_gaps and not ctx.show_gaps_lead:
         _write_gaps_section(buf, result, lead=False)
     if ctx.show_papers:
         _write_papers_section(buf, result, ctx)
+    if ctx.show_recipe_preview:
+        _write_recipe_preview(buf, ctx)
+    _write_run_summary(buf, result, ctx)
     _write_footer(buf)
     buf.write("</main>\n</body>\n</html>\n")
     return buf.getvalue()
@@ -107,9 +115,21 @@ body {
 }
 .container { max-width: 920px; margin: 0 auto; padding: 32px 24px 80px; }
 h1, h2, h3 { line-height: 1.25; margin-top: 1.5em; }
-h1 { font-size: 1.75rem; border-bottom: 1px solid var(--border); padding-bottom: 0.25em; }
-h2 { font-size: 1.35rem; border-bottom: 1px solid var(--border); padding-bottom: 0.2em; }
-h3 { font-size: 1.1rem; }
+h1 {
+  font-size: 2.1rem;
+  font-weight: 700;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 0.35em;
+  letter-spacing: -0.01em;
+}
+h2 {
+  font-size: 1.55rem;
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.25em;
+  letter-spacing: -0.005em;
+}
+h3 { font-size: 1.15rem; font-weight: 600; }
 p { margin: 0.6em 0; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -131,36 +151,104 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .callout strong { display: block; margin-bottom: 0.25em; }
 .muted { color: var(--fg-muted); }
 
+/* ─── At-a-glance scoreboard ──────────────────────────────────── */
+.scoreboard { margin: 1.5em 0; }
+.scoreboard__pills {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  margin: 12px 0;
+}
+.pill {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.95em;
+  border: 1px solid var(--border);
+  background: var(--bg-muted);
+  color: var(--fg);
+}
+.pill b { font-size: 1.1em; }
+.pill--direct_fit { border-left: 4px solid var(--good); padding-left: 12px; }
+.pill--reframing { border-left: 4px solid var(--accent); padding-left: 12px; }
+.pill--signal_proxy { border-left: 4px solid var(--proxy); padding-left: 12px; }
+.pill--benign_baseline { border-left: 4px solid var(--benign); padding-left: 12px; }
+.pill--not_useful { border-left: 4px solid var(--neutral); padding-left: 12px; opacity: 0.7; }
+.scoreboard__note {
+  font-size: 0.92em; color: var(--fg-muted); font-style: italic;
+}
+
+/* ─── Strategy-grouped sections ───────────────────────────────── */
+.group { margin: 2em 0; }
+.group__head {
+  border-left: 6px solid var(--neutral);
+  padding-left: 14px;
+  margin-bottom: 18px;
+}
+.group--direct_fit .group__head { border-left-color: var(--good); }
+.group--reframing .group__head { border-left-color: var(--accent); }
+.group--signal_proxy .group__head { border-left-color: var(--proxy); }
+.group--benign_baseline .group__head { border-left-color: var(--benign); }
+.group--not_useful .group__head { border-left-color: var(--neutral); opacity: 0.7; }
+.group__title { margin: 0; border: none; padding: 0; font-size: 1.45rem; }
+.group__count { color: var(--fg-muted); font-weight: 400; font-size: 0.9em; }
+.group__desc { color: var(--fg-muted); font-size: 0.95em; margin: 4px 0 0; }
+
+/* ─── Candidate card ──────────────────────────────────────────── */
 .candidate {
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 16px 20px;
+  border-left: 4px solid var(--neutral);
+  border-radius: 6px;
+  padding: 18px 22px;
   margin: 14px 0;
   background: var(--bg);
 }
+.candidate--direct_use { border-left-color: var(--good); }
+.candidate--subset_extraction { border-left-color: var(--accent); }
+.candidate--label_remapping { border-left-color: var(--accent); }
+.candidate--cross_class_repurposing { border-left-color: var(--proxy); }
+.candidate--signal_proxy { border-left-color: var(--proxy); }
+.candidate--benign_baseline { border-left-color: var(--benign); }
+.candidate--not_useful { border-left-color: var(--neutral); opacity: 0.75; }
+.candidate--unscored { border-left-color: var(--neutral); }
+
 .candidate__head {
-  display: flex; flex-wrap: wrap; gap: 8px 16px;
-  align-items: baseline; margin-bottom: 4px;
+  display: flex; flex-wrap: wrap; gap: 6px 12px;
+  align-items: center; margin-bottom: 6px;
 }
-.candidate__title { font-weight: 600; font-size: 1.05em; margin: 0; }
-.candidate__meta { color: var(--fg-muted); font-size: 0.9em; }
-.candidate__field { margin: 4px 0; font-size: 0.95em; }
-.candidate__field b { color: var(--fg); }
-
-.badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
-.badge {
-  display: inline-block;
+.candidate__rank { font-weight: 700; color: var(--fg-muted); font-size: 0.9em; }
+.candidate__verdict {
+  font-weight: 600;
   padding: 2px 10px;
-  border-radius: 999px;
-  font-size: 0.82em;
+  border-radius: 4px;
   background: var(--bg-muted);
-  border: 1px solid var(--border);
-  color: var(--fg);
+  font-size: 0.9em;
 }
-.badge--good { border-color: var(--good); color: var(--good); }
-.badge--warn { border-color: var(--warn); color: var(--warn); }
-.badge--bad { border-color: var(--bad); color: var(--bad); }
+.candidate__verdict--direct_use { color: var(--good); background: color-mix(in srgb, var(--good) 12%, var(--bg)); }
+.candidate__verdict--subset_extraction,
+.candidate__verdict--label_remapping { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg)); }
+.candidate__verdict--cross_class_repurposing,
+.candidate__verdict--signal_proxy { color: var(--proxy); background: color-mix(in srgb, var(--proxy) 12%, var(--bg)); }
+.candidate__verdict--benign_baseline { color: var(--benign); background: color-mix(in srgb, var(--benign) 12%, var(--bg)); }
+.candidate__verdict--not_useful { color: var(--neutral); background: var(--bg-muted); opacity: 0.85; }
+.candidate__id { font-size: 0.92em; }
 
+.candidate__lede { font-size: 1.02em; margin: 6px 0 8px; color: var(--fg); }
+.candidate__use-as {
+  font-size: 0.95em;
+  background: var(--bg-muted);
+  padding: 6px 12px;
+  border-radius: 4px;
+  margin: 6px 0 10px;
+}
+.candidate__use-as b { font-weight: 600; }
+
+.candidate__snapshot {
+  list-style: none; padding: 0; margin: 8px 0;
+  font-size: 0.92em;
+}
+.candidate__snapshot li { margin: 3px 0; color: var(--fg); }
+.signals { color: var(--fg-muted); }
+
+/* Strategy detail (kept; same colour-stripe per kind) */
 .strategies { margin: 10px 0; }
 .strategy {
   display: block; padding: 8px 12px; margin: 6px 0;
@@ -195,10 +283,40 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .probe-grid dt { color: var(--fg-muted); }
 .probe-grid dd { margin: 0; }
 
+/* ─── Recipe / curate preview ─────────────────────────────────── */
+.recipe-preview {
+  margin: 2em 0;
+  padding: 16px 20px;
+  background: var(--bg-muted);
+  border-radius: 8px;
+  border-left: 4px solid var(--good);
+}
+.recipe-preview h2 { margin-top: 0; }
+.recipe-preview pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+.recipe-preview__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92em;
+  margin: 12px 0;
+}
+.recipe-preview__table th,
+.recipe-preview__table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.recipe-preview__table th { font-weight: 600; color: var(--fg-muted); }
+
 .run-summary { background: var(--bg-muted); padding: 12px 16px; border-radius: 6px; }
 .run-summary ul { margin: 0; padding-left: 20px; }
 .notices { margin-top: 10px; }
-.notice { font-size: 0.92em; color: var(--fg-muted); margin: 4px 0; }
+.notice { font-size: 0.85em; color: var(--fg-muted); margin: 4px 0; }
 
 footer.disclaimer {
   margin-top: 60px; padding-top: 16px; border-top: 1px solid var(--border);
@@ -370,16 +488,46 @@ def _write_run_summary(buf: StringIO, result: ReconResult, ctx: ReconReportConte
     buf.write("</div>\n")
 
 
+def _write_at_a_glance(buf: StringIO, ctx: ReconReportContext) -> None:
+    """Top-level scoreboard: counts per strategy bucket as bold pill badges."""
+    buf.write('<section class="scoreboard">\n<h2>At a glance</h2>\n')
+    buf.write('<div class="scoreboard__pills">\n')
+    any_pill = False
+    for group in ctx.groups:
+        if group.count == 0:
+            continue
+        any_pill = True
+        buf.write(
+            f'<span class="pill pill--{group.key}">'
+            f'<b>{group.count}</b> {escape(group.label)}'
+            "</span>"
+        )
+    if not any_pill:
+        buf.write("<i>No strategy assessments produced for this run.</i>")
+    buf.write("\n</div>\n")
+    if ctx.no_direct_fits:
+        buf.write(
+            '<p class="scoreboard__note">'
+            "No direct fits — every candidate is a reframing. Review the "
+            "rationale + caveats below before committing."
+            "</p>\n"
+        )
+    buf.write("</section>\n")
+
+
 def _write_candidates_section(
     buf: StringIO, result: ReconResult, ctx: ReconReportContext
 ) -> None:
-    buf.write("<h2>Candidates</h2>\n")
     if ctx.has_strategies:
-        buf.write(
-            "<p>Listed in <b>best-strategy order</b>. Each candidate's primary "
-            "strategy and confidence are shown; review caveats before committing.</p>\n"
-        )
-    elif ctx.has_decomposition:
+        for group in ctx.groups:
+            if group.count == 0:
+                continue
+            _write_strategy_group(buf, group)
+        return
+
+    # Fallback: pre-strategy mode (metadata-only / discovery-only).
+    buf.write("<h2>Candidates</h2>\n")
+    if ctx.has_decomposition:
         buf.write(
             "<p>Listed in search-relevance order, deduped across the original brief "
             "and decomposition directions. The <code>surfaced by</code> annotation "
@@ -391,54 +539,213 @@ def _write_candidates_section(
             "This is not a fitness ranking.</p>\n"
         )
     for i, sc in enumerate(result.candidates, start=1):
-        _write_candidate(buf, i, sc)
+        _write_candidate(buf, i, sc, verdict=None)
 
 
-def _write_candidate(buf: StringIO, index: int, sc: Scorecard) -> None:
+def _write_strategy_group(buf: StringIO, group: StrategyGroup) -> None:
+    """Render one bucket of cards as a section with pill-styled heading."""
+    buf.write(
+        f'<section class="group group--{group.key}">\n'
+        f'<header class="group__head">'
+        f'<h2 class="group__title">{escape(group.label)} '
+        f'<span class="group__count">· {group.count}</span></h2>'
+        f'<p class="group__desc">{escape(group.description)}</p>'
+        f"</header>\n"
+    )
+    for card in group.cards:
+        _write_candidate(buf, card.rank, card.scorecard, verdict=card.verdict)
+    buf.write("</section>\n")
+
+
+def _write_candidate(
+    buf: StringIO,
+    index: int,
+    sc: Scorecard,
+    *,
+    verdict: CardVerdict | None,
+) -> None:
+    """Render one candidate card.
+
+    When `verdict` is supplied (strategy-assessed), the header bubbles
+    up "Direct fit (strong, 0.85)" + a one-liner so users don't have
+    to read the rationale tree to decide.
+    """
     cand = sc.candidate
     md = cand.metadata
-    buf.write('<div class="candidate">\n')
-    buf.write('<div class="candidate__head">\n')
-    buf.write(
-        f'<h3 class="candidate__title">{index}. <code>{escape(cand.source)}:{escape(cand.id)}</code></h3>\n'
-    )
-    buf.write("</div>\n")
-    if md.card_url:
+
+    kind_class = verdict.primary_kind if verdict and verdict.primary_kind else "unscored"
+    buf.write(f'<article class="candidate candidate--{kind_class}">\n')
+
+    # Header: index + verdict pill + dataset id
+    buf.write('<header class="candidate__head">\n')
+    if verdict is not None:
         buf.write(
-            f'<div class="candidate__field">🔗 <b>Card:</b> '
-            f'<a href="{escape(md.card_url)}">{escape(md.card_url)}</a></div>\n'
+            f'<span class="candidate__rank">#{index}</span>'
+            f'<span class="candidate__verdict candidate__verdict--{kind_class}">'
+            f"{escape(verdict.headline)}</span>"
+            f'<code class="candidate__id">{escape(cand.source)}:{escape(cand.id)}</code>'
         )
-    if cand.revision:
+    else:
         buf.write(
-            f'<div class="candidate__field">📌 <b>Revision:</b> '
-            f"<code>{escape(cand.revision[:12])}</code></div>\n"
+            f'<span class="candidate__rank">#{index}</span>'
+            f'<code class="candidate__id">{escape(cand.source)}:{escape(cand.id)}</code>'
         )
-    if md.description:
-        desc = md.description.strip().splitlines()[0][:240]
-        buf.write(f'<div class="candidate__field">📝 <b>Description:</b> {escape(desc)}</div>\n')
-    if cand.surfaced_by:
+    buf.write("</header>\n")
+
+    if verdict is not None and verdict.one_liner:
+        buf.write(f'<p class="candidate__lede">{escape(verdict.one_liner)}</p>\n')
+
+    if verdict is not None and verdict.confidence is not None:
         buf.write(
-            f'<div class="candidate__field">🧭 <b>Surfaced by:</b> '
-            f"{escape(', '.join(cand.surfaced_by))}</div>\n"
-        )
-    if cand.requires_auth:
-        buf.write(
-            '<div class="candidate__field">🔒 <b>Access:</b> gated / requires authentication</div>\n'
+            f'<p class="candidate__use-as"><b>Use as:</b> {escape(verdict.use_as)}</p>\n'
         )
 
-    badges = list(_render_badges(sc))
-    if badges:
-        buf.write('<div class="badges">')
-        for cls, text in badges:
-            buf.write(f'<span class="badge badge--{cls}">{escape(text)}</span>')
-        buf.write("</div>\n")
+    # Snapshot block (description + plain-text signals + auth + provenance)
+    snapshot_items: list[str] = []
+    if md.description:
+        desc = md.description.strip().splitlines()[0][:240]
+        snapshot_items.append(f'📝 {escape(desc)}')
+    if md.card_url:
+        snapshot_items.append(
+            f'🔗 <a href="{escape(md.card_url)}">{escape(md.card_url)}</a>'
+        )
+    if cand.revision:
+        snapshot_items.append(f"📌 revision <code>{escape(cand.revision[:12])}</code>")
+    plain_signals = list(_render_plain_signals(sc))
+    if plain_signals:
+        snapshot_items.append(
+            "<span class=\"signals\">"
+            + " · ".join(escape(s) for s in plain_signals)
+            + "</span>"
+        )
+    if cand.requires_auth:
+        snapshot_items.append("🔒 gated — requires authentication")
+    if cand.surfaced_by:
+        snapshot_items.append(
+            f'🧭 surfaced by: {escape(", ".join(cand.surfaced_by))}'
+        )
+
+    if snapshot_items:
+        buf.write('<ul class="candidate__snapshot">\n')
+        for item in snapshot_items:
+            buf.write(f"<li>{item}</li>\n")
+        buf.write("</ul>\n")
 
     if sc.strategies:
         _write_strategies(buf, sc.strategies)
 
     _write_probe_signals(buf, sc)
 
-    buf.write("</div>\n")
+    buf.write("</article>\n")
+
+
+def _render_plain_signals(sc: Scorecard) -> list[str]:
+    """Plain-text snapshot signals: license, size, freshness, languages.
+
+    Mirrors markdown_report._render_plain_signals. No colour codes;
+    license is stated factually.
+    """
+    bits: list[str] = []
+    license_sub = sc.cheap_probes.get("license")
+    if license_sub is not None:
+        spdx = _evidence_detail(license_sub, "license_spdx")
+        match = _evidence_detail(license_sub, "policy_match")
+        if spdx and match == "allow":
+            bits.append(f"license: {spdx} (in policy)")
+        elif spdx and match == "warn_only":
+            bits.append(f"license: {spdx} (review)")
+        elif spdx:
+            bits.append(f"license: {spdx} (outside policy)")
+        elif license_sub.status == "low_confidence":
+            raw = _evidence_detail(license_sub, "license_raw") or "?"
+            bits.append(f"license: {raw} (unknown SPDX)")
+        else:
+            bits.append("license: missing")
+
+    size_sub = sc.cheap_probes.get("size")
+    if size_sub is not None and size_sub.status == "ok":
+        rows = _evidence_detail(size_sub, "rows")
+        bytes_ = _evidence_detail(size_sub, "bytes")
+        downloads = _evidence_detail(size_sub, "downloads")
+        if rows:
+            bits.append(f"{rows} rows")
+        elif bytes_:
+            bits.append(f"{bytes_} bytes")
+        if downloads:
+            bits.append(f"{downloads} downloads")
+
+    fresh_sub = sc.cheap_probes.get("freshness")
+    if fresh_sub is not None and fresh_sub.status == "ok":
+        bucket = _evidence_detail(fresh_sub, "bucket") or "?"
+        bits.append(f"freshness: {bucket}")
+
+    lang_sub = sc.cheap_probes.get("languages")
+    if lang_sub is not None and lang_sub.status == "ok":
+        declared = _evidence_detail(lang_sub, "declared") or "?"
+        bits.append(f"languages: {declared}")
+
+    if sc.label_intent_fit is not None and sc.label_intent_fit.value is not None:
+        bits.append(f"semantic fit: {sc.label_intent_fit.value:.2f}")
+
+    return bits
+
+
+def _write_recipe_preview(buf: StringIO, ctx: ReconReportContext) -> None:
+    """End-of-report bridge: what `curate` would produce, and how to run it."""
+    rp = ctx.recipe_preview
+    if rp is None:
+        return
+    buf.write('<section class="recipe-preview">\n<h2>Next steps — recipe & curate</h2>\n')
+    buf.write(
+        f"<p><b>{rp.n_components} component(s)</b> would land in the draft recipe "
+        "(min strategy confidence ≥ 0.5):</p>\n<ul>\n"
+    )
+    if rp.n_direct_fit:
+        buf.write(f"<li><b>{rp.n_direct_fit}</b> direct-fit</li>\n")
+    if rp.n_reframing:
+        buf.write(f"<li><b>{rp.n_reframing}</b> reframing</li>\n")
+    if rp.n_proxy:
+        buf.write(f"<li><b>{rp.n_proxy}</b> signal proxy</li>\n")
+    if rp.n_benign:
+        buf.write(f"<li><b>{rp.n_benign}</b> benign baseline</li>\n")
+    buf.write(
+        f"</ul>\n<p>Estimated row count: <b>~{rp.estimated_rows:,}</b> "
+        "(after the 5,000-row auto-cap on <code>take: all</code> components).</p>\n"
+    )
+    if rp.components:
+        buf.write(
+            '<table class="recipe-preview__table">\n'
+            "<thead><tr>"
+            "<th>#</th><th>Component</th><th>Strategy</th>"
+            "<th>Confidence</th><th>Take</th><th>Label kind</th>"
+            "</tr></thead>\n<tbody>\n"
+        )
+        for i, comp in enumerate(rp.components, start=1):
+            take_str = str(comp.take) if comp.take is not None else "all"
+            label = comp.label_kind or "—"
+            buf.write(
+                f"<tr><td>{i}</td>"
+                f"<td><code>{escape(comp.candidate_id)}</code></td>"
+                f"<td>{escape(comp.primary_kind)}</td>"
+                f"<td>{comp.confidence:.2f}</td>"
+                f"<td>{escape(take_str)}</td>"
+                f"<td>{escape(label)}</td></tr>\n"
+            )
+        buf.write("</tbody></table>\n")
+    buf.write(
+        f'<p><b>Run:</b></p>\n<pre><code>{escape(rp.next_command)}</code></pre>\n'
+        "<p>You'll get <code>train.jsonl</code> / <code>val.jsonl</code> / "
+        "<code>test.jsonl</code> (leakage-aware splits), "
+        "<code>recipe.lock.yaml</code> (audit trail), "
+        "<code>report.md</code> (5-second scorecard), and "
+        "<code>usage.md</code> (3-line snippets for HF datasets / pandas / raw JSONL).</p>\n"
+        "<p>Need to refine first? Edit <code>recipe.draft.yaml</code> "
+        "(drop weak components, tune <code>take</code>, add "
+        "<code>filter</code> expressions), or re-run with "
+        "<code>datascout recon ... --review</code> to edit the search "
+        "directions before discovery.</p>\n"
+        "</section>\n"
+    )
 
 
 def _write_strategies(buf: StringIO, strategies: list[Strategy]) -> None:
