@@ -140,13 +140,24 @@ def recon(
         bool,
         typer.Option("--no-explore", hidden=True, help="Skip LLM decomposition (debug)."),
     ] = False,
+    no_papers: Annotated[
+        bool,
+        typer.Option(
+            "--no-papers",
+            help="Skip the academic-paper discovery stage (NeurIPS / ICML / ICLR / SaTML).",
+        ),
+    ] = False,
 ) -> None:
     from dataset_scout.context import ScoutContext
     from dataset_scout.decomposition_io import load_decomposition, write_decomposition
     from dataset_scout.errors import DatasetScoutError
     from dataset_scout.pipeline import run_recon
     from dataset_scout.recipe_draft import write_recipe_draft
-    from dataset_scout.render import write_recon_report, write_results_json
+    from dataset_scout.render import (
+        write_recon_report,
+        write_recon_report_html,
+        write_results_json,
+    )
 
     overrides: dict[str, object] = {"min_strategy_confidence": min_strategy_confidence}
     if detection_target:
@@ -177,6 +188,7 @@ def recon(
             parser_overrides=overrides,
             explore=not no_explore,
             directions_override=directions_override,
+            paper_search_fn=False if no_papers else None,
         )
     except DatasetScoutError as e:
         err.print(f"[red]error:[/red] {e}")
@@ -184,6 +196,7 @@ def recon(
 
     json_path = write_results_json(result, out)
     md_path = write_recon_report(result, out)
+    html_path = write_recon_report_html(result, out)
     recipe_path = write_recipe_draft(result, out)
     decomposition_path = (
         write_decomposition(result.coverage.decomposition, out)
@@ -198,6 +211,7 @@ def recon(
     )
     err.print(f"  - results:       {json_path}")
     err.print(f"  - report:        {md_path}")
+    err.print(f"  - report (html): {html_path}")
     if decomposition_path is not None:
         err.print(f"  - decomposition: {decomposition_path}")
     if recipe_path is not None:
@@ -525,20 +539,69 @@ app.add_typer(cache_app, name="cache")
 
 @cache_app.command("info")
 def cache_info() -> None:
-    err.print("[yellow]cache info is not implemented yet (lands with M1's cache).[/yellow]")
-    raise typer.Exit(code=2)
+    """Print cache stats: size, entries, per-namespace breakdown."""
+    from dataset_scout.cache import Cache
+    from dataset_scout.context import ScoutContext
+
+    ctx = ScoutContext.from_env(is_tty=sys.stderr.isatty())
+    cache = Cache.open(ctx.cache_dir)
+    try:
+        stats = cache.info()
+    finally:
+        cache.close()
+    err.print(f"[bold]Cache:[/bold] {stats['db_path']}")
+    err.print(
+        f"  total: {stats['total_entries']} entries, "
+        f"{stats['total_bytes'] / 1024 / 1024:.1f} MiB / "
+        f"{stats['max_bytes'] / 1024 / 1024 / 1024:.1f} GiB cap"
+    )
+    if not stats["by_namespace"]:
+        err.print("  [dim](empty)[/dim]")
+        return
+    for ns in stats["by_namespace"]:
+        err.print(
+            f"  - {ns['namespace']:<12} {ns['entries']:>6} entries  "
+            f"{ns['bytes'] / 1024 / 1024:>8.2f} MiB"
+        )
 
 
 @cache_app.command("prune")
 def cache_prune() -> None:
-    err.print("[yellow]cache prune is not implemented yet.[/yellow]")
-    raise typer.Exit(code=2)
+    """Remove expired entries (TTL elapsed)."""
+    from dataset_scout.cache import Cache
+    from dataset_scout.context import ScoutContext
+
+    ctx = ScoutContext.from_env(is_tty=sys.stderr.isatty())
+    cache = Cache.open(ctx.cache_dir)
+    try:
+        removed = cache.prune()
+    finally:
+        cache.close()
+    err.print(f"Removed [bold]{removed}[/bold] expired entrie(s).")
 
 
 @cache_app.command("clear")
-def cache_clear() -> None:
-    err.print("[yellow]cache clear is not implemented yet.[/yellow]")
-    raise typer.Exit(code=2)
+def cache_clear(
+    namespace: Annotated[
+        str | None,
+        typer.Option(
+            "--namespace", "-n",
+            help="If provided, clear only this namespace (e.g. decompose, strategy).",
+        ),
+    ] = None,
+) -> None:
+    """Remove cache entries — all by default, or one namespace."""
+    from dataset_scout.cache import Cache
+    from dataset_scout.context import ScoutContext
+
+    ctx = ScoutContext.from_env(is_tty=sys.stderr.isatty())
+    cache = Cache.open(ctx.cache_dir)
+    try:
+        removed = cache.clear(namespace)
+    finally:
+        cache.close()
+    where = f"namespace '{namespace}'" if namespace else "all namespaces"
+    err.print(f"Removed [bold]{removed}[/bold] entrie(s) from {where}.")
 
 
 # ─── sources ────────────────────────────────────────────────────────

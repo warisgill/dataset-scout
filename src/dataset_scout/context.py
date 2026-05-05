@@ -72,8 +72,8 @@ class ScoutContext(BaseModel):
     sources: Mapping[str, SourceConfig] = Field(
         default_factory=lambda: {
             "huggingface": SourceConfig(enabled=True),
-            "kaggle": SourceConfig(enabled=False),  # opt-in: needs Kaggle creds
-            "pwc": SourceConfig(enabled=True),
+            "kaggle": SourceConfig(enabled=True),  # quietly skipped without creds
+            # "pwc": SourceConfig(enabled=False),  # not yet wired
         }
     )
 
@@ -85,6 +85,9 @@ class ScoutContext(BaseModel):
     aoai_endpoint: str | None = None
     aoai_deployment: str | None = None
     aoai_api_version: str = "2024-10-21"
+    # Optional: an embeddings deployment name (e.g. text-embedding-3-small).
+    # When unset, the embedding-fit pipeline stage no-ops gracefully.
+    aoai_embedding_deployment: str | None = None
 
     is_tty: bool = False
 
@@ -132,6 +135,8 @@ class ScoutContext(BaseModel):
             kwargs["aoai_deployment"] = v
         if v := e.get("AZURE_OPENAI_API_VERSION"):
             kwargs["aoai_api_version"] = v
+        if v := e.get("AZURE_OPENAI_EMBEDDING_DEPLOYMENT"):
+            kwargs["aoai_embedding_deployment"] = v
         if is_tty is not None:
             kwargs["is_tty"] = is_tty
 

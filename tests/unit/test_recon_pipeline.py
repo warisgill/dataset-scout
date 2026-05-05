@@ -87,6 +87,7 @@ def test_run_recon_end_to_end(tmp_path: Path) -> None:
         "find labeled prompt injection datasets in english",
         ctx=ctx,
         sources=[fake],
+        paper_search_fn=False,
     )
 
     # Three candidates surfaced; source-relevance order preserved.
@@ -140,7 +141,7 @@ def test_run_recon_records_progress_events() -> None:
     fake = FakeSource(_fixture_candidates())
     ctx = ScoutContext.from_env(env={})
     events: list = []
-    run_recon("brief", ctx=ctx, sources=[fake], events=events)
+    run_recon("brief", ctx=ctx, sources=[fake], events=events, paper_search_fn=False)
 
     stages = {e.stage for e in events}
     assert {"parse", "search", "probe"} <= stages
@@ -157,7 +158,7 @@ def test_run_recon_handles_failing_source() -> None:
 
     boom = BoomSource([])
     ctx = ScoutContext.from_env(env={})
-    result = run_recon("brief", ctx=ctx, sources=[boom])
+    result = run_recon("brief", ctx=ctx, sources=[boom], paper_search_fn=False)
     assert result.candidates == []
     assert any("failed" in n for n in result.notices)
 
@@ -165,6 +166,6 @@ def test_run_recon_handles_failing_source() -> None:
 def test_run_recon_empty_results_emit_helpful_notice() -> None:
     fake = FakeSource([])
     ctx = ScoutContext.from_env(env={})
-    result = run_recon("brief", ctx=ctx, sources=[fake])
+    result = run_recon("brief", ctx=ctx, sources=[fake], paper_search_fn=False)
     assert result.candidates == []
     assert any("broaden" in n.lower() for n in result.notices)

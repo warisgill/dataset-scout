@@ -272,19 +272,11 @@ def _build_source_index(
     *,
     sources_override: list[Source] | None = None,
 ) -> dict[str, Source]:
-    """Index sources by `name`. M4a wires HF only; sources_override
-    lets tests inject FakeSource."""
-    if sources_override is not None:
-        return {s.name: s for s in sources_override}
+    """Index sources by `name`. Tests can pass `sources_override` to
+    inject a FakeSource."""
+    from dataset_scout.sources.factory import build_source_index
 
-    sources: dict[str, Source] = {}
-    enabled = set(ctx.enabled_sources())
-    if "huggingface" in enabled:
-        from dataset_scout.sources.huggingface import HuggingFaceSource
-
-        token = ctx.api_keys.get("HF_TOKEN") or ctx.api_keys.get("HUGGINGFACE_HUB_TOKEN")
-        sources["huggingface"] = HuggingFaceSource(token=token)
-    return sources
+    return build_source_index(ctx, override=sources_override)
 
 
 # ─── component materialisation ───────────────────────────────────────
@@ -304,8 +296,19 @@ def _classify_component_failure(c: RecipeComponent, exc: BaseException) -> dict[
     type_name = exc.__class__.__name__
     lower = msg.lower()
 
+    # Source explicitly does not support streaming for this candidate
+    # (e.g. Kaggle, which is discovery-only). Distinct from "no rows" —
+    # this is structural, not a transient blip.
+    if "SourceUnsupportedError" in type_name:
+        category = "unsupported_source"
+        hint = (
+            "This source does not support streaming rows (e.g. Kaggle is "
+            "discovery-only). Remove the component, or materialise the "
+            "data manually using the source's native tools and re-add as "
+            "a local file in a future recipe shape."
+        )
     # Auth-gated dataset (HF requires login).
-    if "gated" in lower or "must be authenticated" in lower or "401" in msg:
+    elif "gated" in lower or "must be authenticated" in lower or "401" in msg:
         category = "gated_dataset"
         hint = "Authenticate (`HF_TOKEN=...`) or remove this component from the recipe."
     # Multi-config dataset that wasn't pinned to one.

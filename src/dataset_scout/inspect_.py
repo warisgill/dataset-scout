@@ -108,12 +108,15 @@ def load_intent_from(path: Path) -> Intent:
 
 
 def _build_source(ctx: ScoutContext, name: str) -> Source:
-    if name == "huggingface":
-        from dataset_scout.sources.huggingface import HuggingFaceSource
+    from dataset_scout.sources.factory import build_source_index
 
-        token = ctx.api_keys.get("HF_TOKEN") or ctx.api_keys.get("HUGGINGFACE_HUB_TOKEN")
-        return HuggingFaceSource(token=token)
-    raise DatasetScoutError(f"source '{name}' is not wired in M3 (only 'huggingface' today)")
+    index = build_source_index(ctx)
+    if name in index:
+        return index[name]
+    raise DatasetScoutError(
+        f"source '{name}' is not configured. Available: "
+        f"{', '.join(sorted(index)) or '(none)'}."
+    )
 
 
 # ─── statistics helpers ──────────────────────────────────────────────

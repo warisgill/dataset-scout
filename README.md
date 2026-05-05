@@ -1,26 +1,34 @@
-# dataset-scout
+<h1 align="center">dataset-scout</h1>
 
-> **Brief in. Curated, audit-ready corpus out.**
-> Public-dataset reconnaissance for AI security work — direct-fit
-> corpora when they exist, defensible reframings of related work when
-> they don't, and a hand-off-able JSONL with full provenance.
+<p align="center">
+  <em>Your dataset-discovery teammate.</em><br>
+  Tell it what you need. Get back a curated corpus — with receipts — in minutes.
+</p>
 
-Detection engineers, forensic analysts, and incident responders spend
-hours hand-searching HuggingFace for datasets that fit their threat
-model — then second-guessing whether the creative reframings they
-have in mind would survive an audit. `dataset-scout` automates that
-loop. It reads your brief, expands the search net into adjacent
-directions an LLM proposes, fetches real rows from each candidate,
-tells you (with receipts) which datasets fit directly, which can be
-reframed and how, and what your candidate set is missing — then
-materializes a normalized, leakage-aware corpus with a defensible
-`recipe.lock.yaml`.
+<p align="center">
+  <a href="docs/getting-started.md">Getting started</a> ·
+  <a href="docs/concepts.md">Concepts</a> ·
+  <a href="docs/cli.md">CLI</a> ·
+  <a href="docs/architecture.md">Architecture</a>
+</p>
 
-It's **upstream of your detection workbench.** No transformation
-into your downstream's native schema, no model training. With M10 it
-adds *opt-in* label rescue for proxy / weakly-labeled rows under an
-LLM-as-judge — strictly audited, explicit gaps over guesses, and
-never the default. Hand-off and get out of the way.
+---
+
+ML practitioners spend hours hand-searching HuggingFace for datasets
+that fit their problem — and then second-guessing whether the creative
+reframings they have in mind would actually hold up. `dataset-scout`
+automates that loop:
+
+1. Reads your brief and **expands it into adjacent search directions**
+   an LLM proposes.
+2. Pulls real candidates and **samples actual rows** before judging fit.
+3. Tells you, with rationale, **which datasets fit directly**, **which
+   can be reframed and how**, and **what's missing**.
+4. Hands you a normalized JSONL corpus with leakage-aware splits and a
+   `recipe.lock.yaml` you can show a reviewer.
+
+Every claim points back at a card, a column, a sample row.
+You stay in the loop.
 
 ---
 
@@ -32,14 +40,12 @@ No HuggingFace token. No Azure OpenAI key. Zero setup:
 uvx dataset-scout tour
 ```
 
-A complete recon report — decomposition, strategies, coverage gaps,
-candidates ranked by reframing strength — for an over-refusal
-detection program, rendered to your terminal in under a second from
-canned demo data. `--out scratch/` also persists the full set of
-artefacts (`results.json`, `recipe.draft.yaml`, `decomposition.yaml`,
-`report.md`) so you can poke them.
-
-When you're ready, give it a real brief.
+A complete recon report — decomposition, reframings, coverage gaps,
+candidates ranked by fit — for an over-refusal detection program,
+rendered to your terminal in under a second from canned demo data.
+Add `--out scratch/` to also drop the full set of artefacts
+(`results.json`, `recipe.draft.yaml`, `decomposition.yaml`, `report.md`)
+on disk so you can poke them.
 
 ---
 
@@ -50,164 +56,108 @@ az login                                                     # Entra auth for AO
 echo "AZURE_OPENAI_ENDPOINT=https://my-aoai.openai.azure.com" > .env
 echo "AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini"                  >> .env
 
-# 1. Iterate on the brief cheaply (~5 s, one LLM call)
-datascout decompose "your brief here" --out scratch/decomposition.yaml
+# 1. Iterate on the brief cheaply (~5s, one LLM call)
+datascout decompose "your brief here" --out scratch/
 
-# 2. Once the directions look right, run the full recon
-#    reusing the decomposition (skips re-paying the decompose call)
+# 2. When the directions look right, run the full recon
+#    Reusing the decomposition skips re-paying for it.
 datascout recon "your brief here" \
     --decomposition-from scratch/decomposition.yaml \
     --out scratch/recon/
 
-# 3. Curate straight to JSONL — recipe.draft.yaml has real column
-#    names because the assessor sampled rows during recon. Workers
-#    materialise components in parallel; the auto-capped `take`
-#    keeps a first-pass build under ~20 minutes even on a
-#    12-component recipe over heavy code corpora.
+# 3. Materialize the corpus straight from the draft recipe.
+#    Recipes ship with REAL column names — no hand-editing required.
 datascout curate --from scratch/recon/recipe.draft.yaml \
-    --out ./mycorpus \
-    --max-concurrency 6 \
-    --max-rows-per-component 500
+    --out ./mycorpus
 ```
 
-The output is a six-file corpus with **leakage-aware splits**
-(MinHash + LSH dedup keeps near-duplicates on the same side of the
-split), a **`recipe.lock.yaml` audit record** (`audit_readiness:
-ready`, dedup parameters, every kept/declined/failed component with
-hint), a 5-second scorecard report, a fingerprint, and
-snippet-pasteable usage for HF `datasets`, pandas, and raw JSONL.
+You end up with a six-file corpus: leakage-aware train / val / test
+splits, a `recipe.lock.yaml` audit trail, a 5-second scorecard report,
+a deterministic fingerprint, and ready-to-paste snippets for HF
+`datasets`, pandas, and raw JSONL.
 
-> **Tip:** `datascout decompose` is the cheap brief-iteration loop.
-> Use it to refine briefs before you pay for the full ~2-minute recon.
+> **Tip:** `decompose` is the cheap brief-iteration loop. Use it to
+> refine your brief before paying for the full ~2-minute recon.
 
 ---
 
-## What makes it different
+## What makes it click
 
-**The wow moments after a real run:**
+**Three things that turn a 4-hour HF safari into a coffee break:**
 
-1. **Coverage-gap report = sourcing roadmap.** When a brief explores
-   novel territory, the LLM tells you what `s missing across all the
-   candidates and where to find it ("nothing covers Markdown-specific
-   cloaking; nothing has DOM-level localisation; consider Common
-   Crawl + Wayback for cloaking-temporal data"). This is the report's
-   lead section, not buried at the bottom.
+1. **Reframings, not just matches.** The LLM doesn't just return
+   keyword hits. For each candidate it proposes 1–4 ranked strategies
+   — *direct fit*, *reframe these labels*, *use as a hard-negative
+   distribution*, *signal proxy* — with confidence, written rationale,
+   caveats, and a concrete transform spec. For a novel brief it's
+   normal to see *zero* direct fits and a stack of defensible
+   reframings instead. That's the value.
 
-2. **Recipes are curate-ready straight from recon.** The strategy
-   assessor fetches 8 real rows per candidate before producing its
-   transform spec, so `recipe.draft.yaml` has actual column names and
-   actual label values — not `prompt_and_response_or_equivalent`
-   placeholders. End-to-end demo: brief → `recon` → `curate` →
-   200K rows materialized in ~5 minutes with no hand-editing.
+2. **Recipes are real, straight from recon.** The strategy assessor
+   streams 8 actual rows per candidate before producing its transform,
+   so `recipe.draft.yaml` references **real column names** and **real
+   label values** — not `prompt_and_response_or_equivalent`
+   placeholders. Brief → recon → curate → tens of thousands of rows
+   on disk in minutes, no column-name whack-a-mole.
 
-3. **Sparse coverage is a first-class outcome, not a failure.** When
-   HF returns 1 candidate (because the brief explores frontier
-   territory) the report explicitly says "this is sparse-coverage
-   territory; the decomposition + gaps are your real deliverable" —
-   not "no candidates returned, try broadening." Honest framing.
+3. **A coverage-gap report = a sourcing roadmap.** When your brief
+   pushes into novel territory, the report leads with what's *missing*
+   across all the candidates and where to go look (*"nothing covers
+   Markdown-specific cloaking; consider Common Crawl + Wayback for
+   cloaking-temporal data"*). Sparse coverage is a first-class
+   outcome, not a failure — and the deliverable, when it happens.
 
-4. **The strategy taxonomy makes reframings legible.** Each candidate
-   gets 1–4 ranked strategies from a 7-kind taxonomy (`direct_use`,
-   `subset_extraction`, `label_remapping`, `cross_class_repurposing`,
-   `signal_proxy`, `benign_baseline`, `not_useful`) with confidence,
-   rationale, caveats, and a concrete transform spec. For novel
-   threats it's normal to see zero `direct_use` results — every
-   candidate is a reframing — and the report flags this honestly.
+**Plus academic paper mining** as a fourth discovery channel: relevant
+papers from **NeurIPS, ICML, ICLR, and SaTML** are surfaced in their
+own report section, and any HuggingFace or Kaggle dataset URLs found
+in their abstracts are *promoted into the candidate pool* with paper
+provenance — so a dataset cited in a recent NeurIPS paper shows up
+beside the HF search hits with the citation as its `surfaced_by`.
 
-5. **`label_kind` is load-bearing.** Output JSONL marks each row's
-   provenance: `ground_truth`, `subset_extracted`, `remapped`, or
-   `proxy`. Train on everything; **eval excludes proxies by
-   contract.** No "we trained on synthetic data" surprises.
-
-6. **`recipe.lock.yaml` is the defensible record.** Pinned
-   revisions, realised counts, content hashes, label-kind
-   distributions per component, override sources for every CLI flag.
-   The single file a reviewer can ask about.
-
-7. **Curate is resilient AND fair.** A gated dataset, a multi-config
-   dataset the LLM didn't pin, a parse-broken CSV, a non-standard
-   split, or an HTTP 429 doesn't kill the run — each one is
-   classified, recorded under `failed_components` in the lockfile
-   + report with an actionable hint, and the corpus is built from
-   whatever did succeed. Components materialise **in parallel**
-   (default 4 workers, configurable via `--max-concurrency`)
-   with deterministic reassembly: same recipe + same seed → same
-   fingerprint regardless of completion order.
-
-8. **`datascout judge` rescues weak labels with an LLM judge — under
-   audit.** Promote `proxy` / `remapped` / unknown rows to
-   `label_kind: judged` by asking one labeling question (an "axis").
-   Multi-judge agreement (single / majority-of-3 / unanimous-of-5),
-   explicit-gap promotion at a configurable threshold, sha256-keyed
-   disk cache so re-runs are free, per-batch checkpoint resumability,
-   and a `--calibrate-against` mode that reports P/R/F1 against a
-   gold corpus *before* the full pass — with an optional precision
-   floor that aborts the run if calibration is too low. Soft per-row
-   failures (API errors, content-filter rejections, parse retries)
-   are bucketed and the run continues. `datascout eval` scores any
-   judged corpus against any gold corpus.
+The output is upstream of your training and eval workbenches. No
+transformation into anyone's downstream schema, no model training.
+Hand-off and get out of the way.
 
 ---
 
-## Use cases
+## Who this is for
 
-1. **Detection authoring.** *"Find labeled public datasets I can use
-   to train and evaluate a [prompt-injection / over-refusal /
-   unsafe-output] detector — direct fits where they exist, and
-   creative reframings of related work so the corpus is rich and
-   robust."*
-2. **IR / forensic retrospective evals.** *"Assemble a labeled
-   reference set so I can retrospectively grade a deployed detector."*
-3. **Threat-family coverage.** *"I have one corpus. Find
-   complementary datasets that cover attack styles mine misses, and
-   blend them while preserving class balance."*
-4. **Multi-detection programs.** *"I have three threat-intel
-   detection sub-programs sharing a backbone — produce one corpus
-   that backs all three."*  (See `datascout compose`.)
+Any practitioner who needs to **assemble a labeled corpus from public
+data** — quickly, defensibly, and without playing column-name
+whack-a-mole. Examples:
+
+- **Detection engineers** building a prompt-injection / over-refusal /
+  unsafe-output classifier. *"Find me direct fits where they exist
+  and creative reframings of related work so the corpus is robust."*
+- **Eval engineers** assembling a labeled reference set for a
+  retrospective grade of a deployed system.
+- **ML researchers** doing fast triage across HuggingFace for a new
+  problem area — *"what's even out there?"*
+- **Data scientists** stitching multiple narrow corpora into one
+  cohesive blend that preserves class balance.
+
+Sweet spot: AI-security and detection work, where reframings of
+adjacent data are how you survive frontier-territory briefs. But the
+loop generalizes.
 
 ---
 
 ## Documentation
 
 - **[Getting started](docs/getting-started.md)** — install, configure,
-  run the demo, run the loop end-to-end (now including the M10 judge
-  step in §11).
-- **[Concepts](docs/concepts.md)** — the mental model: discovery vs
-  ranking, **how to write a brief**, the strategy taxonomy, label
-  kinds (including the M10 `judged` variant + explicit-gap promotion
-  rule), modes, recipes / lockfiles.
-- **[Configuration](docs/configuration.md)** — `ScoutContext`, Azure
-  OpenAI + Entra setup (`az login`), HuggingFace tokens, every
-  recognised env var.
-- **[CLI reference](docs/cli.md)** — every verb (`tour`, `decompose`,
-  `recon`, `inspect`, `curate`, `judge`, `eval`, `compose`, `cache`,
-  `sources`), every flag, with worked examples.
-- **[Architecture](docs/architecture.md)** — pipeline diagram, source
-  plugin contract, probe protocol, mode detection, milestone status.
-- **[Judged corpus shape](docs/judged-corpus-shape.md)** — the stable
-  JSONL contract downstream consumers (e.g. protozoa-gym's
-  `scout_corpus` adapter) target. Documents every field, the M10
-  judge block, the `stable_id` format, and explicit non-features.
-
----
-
-## Related projects
-
-dataset-scout is one piece of a three-tool ecosystem with a clean
-boundary. Each project ships and runs independently — they
-interoperate only via JSONL files and a published shape contract.
-
-| Project | Role | Relationship |
-|---|---|---|
-| **dataset-scout** *(this repo)* | Discover, reframe, curate, and (M10) rescue-label public datasets. Produces audit-ready JSONL corpora with full provenance. | Upstream of any eval workbench. |
-| **[protozoa-gym](https://github.com/mdressman/protozoa-gym)** | Eval orchestration for AISP detection enrichments. Ingests scout-produced corpora via its `protozoa_gym.sources.scout_corpus` adapter — see [`docs/judged-corpus-shape.md`](docs/judged-corpus-shape.md) for the spec. | Downstream consumer. Does not import dataset-scout; reads the JSONL contract. |
-| **[tribunal](https://github.com/mdressman/tribunal)** | Multi-agent LLM-as-judge framework for *output* evaluation (5 debate protocols, IPI/TOV consistency metrics, persona-typed judges). | Standalone library. Different question shape than scout's M10 judge: tribunal scores **candidate outputs**; scout's M10 classifies **dataset rows** for axis membership. Natural future engine for gym's eval-judge step. |
-
-The judge in dataset-scout (M10) is purpose-built for row
-classification ("is this row a positive instance of axis X?") and is
-deliberately small. The richer multi-agent judge orchestration lives
-in tribunal where it fits the question shape; scout consumes a
-~400-LOC purpose-built path instead.
+  run the demo, run the loop end-to-end, with the over-refusal
+  detection scenario as the working example.
+- **[Hero demo script](docs/demo.md)** — the 7-minute, three-beat
+  walkthrough for showing dataset-scout to a team for the first time.
+- **[Concepts](docs/concepts.md)** — the mental model: **how to write
+  a good brief**, the strategy taxonomy, label kinds, modes, recipes
+  and lockfiles.
+- **[CLI reference](docs/cli.md)** — every verb, every flag, with
+  worked examples.
+- **[Architecture](docs/architecture.md)** — pipeline diagram,
+  module layout, source plugin contract, milestone status.
+- **[Configuration](docs/configuration.md)** — `ScoutContext`, AOAI +
+  Entra setup, HuggingFace tokens, every recognised env var.
 
 ---
 
@@ -230,35 +180,98 @@ uv sync
 uv run datascout --help
 ```
 
-Python 3.11+. Heavy deps (litellm, azure-identity, datasets) are
-loaded lazily — `tour` and metadata-only runs cost no LLM-import
-overhead.
+Python 3.11+. Heavy deps (litellm, azure-identity, datasets) load
+lazily — `tour` and metadata-only runs cost no LLM-import overhead.
+
+---
+
+## Advanced features
+
+The three-verb core is `tour` / `recon` / `curate` (plus `decompose`
+as the cheap-iter helper). The rest of the surface is for specific
+needs:
+
+- **`datascout inspect <source>:<id>`** — single-candidate deep-dive:
+  schema from a streamed sample, label distribution with Wilson 95% CIs,
+  text-length stats, license, and a strategy assessment against your
+  current Intent. Pipes cleanly to a file.
+- **`datascout compose r1.yaml r2.yaml ...`** — merge multiple
+  recipes into one. For multi-detection programs that share a corpus.
+- **`datascout judge ./mycorpus --axis X`** — opt-in LLM-as-judge label
+  rescue for proxy / weakly-labeled rows. Multi-judge agreement
+  (single / majority-of-3 / unanimous-of-5), explicit-gap promotion at
+  a configurable threshold, sha256-keyed disk cache, per-batch resumable,
+  and `--calibrate-against` reports P/R/F1 vs gold *before* the full
+  pass with an optional precision floor that aborts a too-low run.
+  Strictly audited; never the default.
+- **`datascout eval ./judged --against ./gold`** — score any judged
+  corpus against any gold corpus.
+
+See [`docs/cli.md`](docs/cli.md) for the full surface.
+
+---
+
+## Roadmap
+
+| | Status |
+|---|---|
+| Discovery + cheap probes (HuggingFace) | ✅ shipped |
+| LLM decomposition + multi-direction search | ✅ shipped |
+| Row-aware strategy assessor + coverage gaps | ✅ shipped |
+| `inspect` deep-dive | ✅ shipped |
+| `curate` (audit-ready: dedup + leakage-aware splits + filter DSL + soft failures) | ✅ shipped |
+| `judge` + `eval` (opt-in LLM-as-judge label rescue) | ✅ shipped |
+| **Cache** (SQLite WAL, age-based eviction, namespace-scoped TTLs) | ✅ shipped |
+| **Embedding label-intent fit** (Azure OpenAI embeddings, cached) | ✅ shipped |
+| **Kaggle source plugin** (discovery-only) | ✅ shipped |
+| **HTML report alongside markdown** | ✅ shipped |
+| **Academic paper discovery** (NeurIPS / ICML / ICLR / SaTML via Semantic Scholar; abstract URL extraction; promotes cited HF/Kaggle datasets to candidates with paper provenance) | ✅ shipped |
+| `--watch` / re-validate mode against upstream revisions | considering |
+| Archive option for offline-reproducible corpora | considering |
+| Lineage DAG, resumable-operation envelope, multi-candidate portfolio assessor | deferred until requested |
+
+The core loop — **brief → recon → curate** — is feature-complete with
+caching, semantic-fit signal, multi-source discovery, paper-citation
+mining, and reviewer-friendly output.
+
+---
+
+## Related projects
+
+dataset-scout is one piece of a small toolkit, but it ships and runs
+standalone. Each project below interoperates only via published JSONL
+contracts — no shared package, no Python-level dependencies.
+
+- **[protozoa-gym](https://github.com/mdressman/protozoa-gym)** — eval
+  orchestration for AISP detection enrichments. Reads scout-produced
+  corpora via its `scout_corpus` adapter; see
+  [`docs/judged-corpus-shape.md`](docs/judged-corpus-shape.md) for the
+  spec.
+- **[tribunal](https://github.com/mdressman/tribunal)** — multi-agent
+  LLM-as-judge framework for *output* evaluation (different question
+  shape than scout's row-classification judge). A natural future
+  engine for gym's eval-judge step.
 
 ---
 
 ## Honest limits
 
-- **Strategy assessment is LLM-judgment, not ground truth.** Always
-  inspect samples before committing.
-- **Card metadata is uneven.** License fields are sometimes missing
-  or wrong; `language:` is often absent; many cards lack content
-  dates. We surface what's there and clearly mark what isn't —
-  no fabrication.
+- **Strategy assessment is LLM judgment, not ground truth.** Inspect
+  samples before committing.
+- **Card metadata is uneven.** License fields are sometimes missing or
+  wrong; `language:` is often absent. We surface what's there and mark
+  what isn't — no fabrication.
 - **Recency alone means little.** "Uploaded yesterday" doesn't imply
   the data reflects today's threat surface.
-- **Reproducibility is contingent.** `recipe.lock.yaml` pins
-  revisions and content hashes. If upstreams delete the data, only an
-  archive (a future feature) makes the blend reproducible standalone.
-- **`curate` is audit-ready and resilient.** MinHash dedup keeps
-  near-duplicates in the same split, filter DSL applies to recipes,
-  lockfile records `audit_readiness: ready` with full dedup
-  parameters. Per-component upstream errors (gated, missing config,
-  bad split, parse errors) are classified and recorded under
-  `failed_components` rather than crashing the run. Still: a
-  defensible *corpus* doesn't excuse a sloppy threat model — read
-  the report and `inspect` before you trust it.
-- **Not legal advice.** License signals are an SPDX best-effort
-  guess; read the upstream card before redistributing.
+- **Reproducibility is contingent.** `recipe.lock.yaml` pins revisions
+  and content hashes; if upstreams delete the data, only an archive
+  (a future feature) makes the blend reproducible standalone.
+- **Judge verdicts are LLM-generated too.** Conservative promotion
+  rules, calibration mode, and precision floors mitigate but don't
+  eliminate the risk. A judged label is only as good as the rubric
+  you wrote.
+- **Not legal advice.** License signals are an SPDX best-effort guess;
+  read the upstream card before redistributing.
 
 ---
 

@@ -14,8 +14,9 @@ Strategy assessor + coverage report land in M2b.
 
 from __future__ import annotations
 
+import contextlib
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from dataset_scout.context import ScoutContext
 from dataset_scout.core import (
@@ -23,11 +24,12 @@ from dataset_scout.core import (
     CoverageGap,
     CoverageReport,
     DecompositionDirection,
+    PaperReference,
     ReconResult,
     Scorecard,
     SubScore,
 )
-from dataset_scout.errors import LLMError, SourceUnavailableError
+from dataset_scout.errors import LLMError
 from dataset_scout.events import ProgressEvent, ProgressEventKind
 from dataset_scout.intent import HeuristicIntentParser, brief_smell_warnings
 from dataset_scout.probes import cheap_probes
@@ -67,23 +69,13 @@ LLM_RUNTIME_HINT = (
 def _build_sources(ctx: ScoutContext) -> list[Source]:
     """Instantiate concrete sources from the context.
 
-    Hardcoded dispatch — only HuggingFace is wired today. Kaggle and
-    PWC are deferred; when they land we'll switch to
-    importlib.metadata.entry_points.
+    Thin wrapper around `sources.factory.build_sources` — kept here as
+    a name the rest of `pipeline.py` can call without importing the
+    factory module twice.
     """
-    sources: list[Source] = []
-    enabled = set(ctx.enabled_sources())
-    if "huggingface" in enabled:
-        from dataset_scout.sources.huggingface import HuggingFaceSource
+    from dataset_scout.sources.factory import build_sources
 
-        token = ctx.api_keys.get("HF_TOKEN") or ctx.api_keys.get("HUGGINGFACE_HUB_TOKEN")
-        sources.append(HuggingFaceSource(token=token))
-    if not sources:
-        raise SourceUnavailableError(
-            "No sources are enabled. Configure at least one in your "
-            "ScoutContext (huggingface is the only one wired today)."
-        )
-    return sources
+    return build_sources(ctx)
 
 
 def _score_candidate(
@@ -134,6 +126,7 @@ def run_recon(
     sources: list[Source] | None = None,
     explore: bool = True,
     directions_override: list[DecompositionDirection] | None = None,
+    paper_search_fn: Any = None,
 ) -> ReconResult:
     """Run the discovery pipeline and return a `ReconResult`.
 
@@ -159,9 +152,31 @@ def run_recon(
         Use the supplied DecompositionDirection list instead of calling
         the LLM. Lets `--decomposition-from <path>` reuse a hand-edited
         decomposition.yaml without paying for a fresh LLM call.
+    paper_search_fn
+        Injection hook for the academic-paper discovery stage. Default
+        (None) wires `dataset_scout.paper_search.find_papers_and_promote`.
+        Tests pass a no-op or a respx-backed stub. Set to a callable
+        with the same signature as `find_papers_and_promote` to override.
+        Pass `False` to disable the stage entirely (returns no papers).
     """
     overrides = parser_overrides or {}
     notices: list[str] = []
+
+    # Open the cache once for the whole run; pass to LLM call sites so
+    # repeat runs (same brief, same candidates) don't re-pay. Best-
+    # effort: if the cache fails to open we degrade silently — the
+    # pipeline must not be blocked by infrastructure.
+    cache: Any = None
+    try:
+        from dataset_scout.cache import open_cache as _open_cache
+
+        cache_cm = _open_cache(ctx.cache_dir)
+        cache = cache_cm.__enter__()
+    except Exception as exc:  # pragma: no cover - defensive
+        cache_cm = None
+        notices.append(f"cache disabled this run: {exc}")
+    else:
+        pass
 
     def _emit(kind: ProgressEventKind, stage: str, message: str = "", **data: object) -> None:
         if events is not None:
@@ -218,7 +233,7 @@ def run_recon(
         else:
             _emit(ProgressEventKind.STAGE_STARTED, stage="decompose")
             try:
-                directions = decompose_intent(intent, ctx=ctx)
+                directions = decompose_intent(intent, ctx=ctx, cache=cache)
             except LLMError as exc:
                 notices.append(f"decomposition skipped: {exc}")
                 notices.append(LLM_RUNTIME_HINT)
@@ -310,6 +325,94 @@ def run_recon(
         message=f"scored {len(scorecards)} candidate(s) with {len(probes)} probes",
     )
 
+    # ─── Academic paper discovery (new dataset-lookup channel) ───
+    # Search NeurIPS / ICML / ICLR / SaTML for papers relevant to the
+    # brief. Surfaces:
+    #   1. PaperReferences with abstract-extracted dataset citations,
+    #      attached to ReconResult.papers for the report.
+    #   2. Promoted Candidates for HF / Kaggle datasets cited by those
+    #      papers, merged into the existing pool with paper provenance
+    #      via surfaced_by.
+    # Failures are non-blocking — the rest of recon proceeds.
+    papers: list[PaperReference] = []
+    ps_callable: Any
+    if paper_search_fn is False:
+        # Explicitly disabled (tests).
+        ps_callable = None
+    elif paper_search_fn is None:
+        from dataset_scout.paper_search import find_papers_and_promote
+
+        ps_callable = find_papers_and_promote
+    else:
+        ps_callable = paper_search_fn
+
+    if ps_callable is not None and (directions or intent.threat_families or intent.raw_brief.strip()):
+        _emit(ProgressEventKind.STAGE_STARTED, stage="papers")
+        try:
+            papers, promoted = ps_callable(
+                intent,
+                directions,
+                cache=cache,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            notices.append(f"paper-search stage failed: {exc}")
+            papers, promoted = [], []
+        for cand in promoted:
+            existed = not _merge_or_register(pool, cand)
+            if not existed:
+                # Newly-promoted candidate; score it with the cheap probes
+                # so the report has consistent annotations.
+                sc = _score_candidate(cand, intent, probes)
+                scorecards.append(sc)
+                _emit(
+                    ProgressEventKind.CANDIDATE_FOUND,
+                    stage="papers",
+                    source=cand.source,
+                    id=cand.id,
+                    surfaced_by=list(cand.surfaced_by),
+                )
+            else:
+                # Existing candidate — _merge_or_register already merged
+                # surfaced_by; reflect the update on its scorecard so the
+                # report shows the paper provenance.
+                merged = pool[(cand.source, cand.id)]
+                for sc in scorecards:
+                    if sc.candidate.source == cand.source and sc.candidate.id == cand.id:
+                        sc.candidate = merged
+                        break
+        _emit(
+            ProgressEventKind.STAGE_FINISHED,
+            stage="papers",
+            message=f"found {len(papers)} paper(s); promoted {len(promoted)} dataset(s)",
+        )
+
+    # ─── Embedding label-intent fit (between probes and shortlist) ─
+    # Populates Scorecard.label_intent_fit when AOAI embeddings are
+    # configured; no-op otherwise. Runs before the shortlist so future
+    # rankers can incorporate the signal — today it's surfaced as a
+    # report annotation.
+    if scorecards and use_llm:
+        from dataset_scout.embedding_fit import assess_label_intent_fit
+
+        _emit(ProgressEventKind.STAGE_STARTED, stage="embedding_fit")
+        try:
+            updated = assess_label_intent_fit(
+                scorecards,
+                intent,
+                ctx=ctx,
+                source_index={s.name: s for s in sources},
+                directions=directions,
+                cache=cache,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            notices.append(f"embedding-fit stage failed: {exc}")
+            updated = 0
+        _emit(
+            ProgressEventKind.STAGE_FINISHED,
+            stage="embedding_fit",
+            message=f"updated {updated} candidate(s)",
+        )
+
     # ─── Strategy assessment + coverage (M2b) ──
     semantic_gaps: list[CoverageGap] = []
     if use_llm and scorecards:
@@ -331,6 +434,7 @@ def run_recon(
                     intent,
                     ctx=ctx,
                     source=source_index.get(sc.candidate.source),
+                    cache=cache,
                 )
             except LLMError as exc:
                 notices.append(
@@ -370,11 +474,16 @@ def run_recon(
     if directions or semantic_gaps:
         coverage = CoverageReport(decomposition=directions, semantic_gaps=semantic_gaps)
 
+    if cache_cm is not None:
+        with contextlib.suppress(Exception):  # pragma: no cover
+            cache_cm.__exit__(None, None, None)
+
     return ReconResult(
         intent=intent,
         candidates=scorecards,
         sources_searched=[s.name for s in sources],
         coverage=coverage,
+        papers=papers,
         elapsed_seconds=round(elapsed, 3),
         notices=notices,
     )

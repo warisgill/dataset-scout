@@ -19,6 +19,7 @@ lives in `dataset_scout.llm_client` and is imported lazily.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from typing import TYPE_CHECKING, Any
@@ -30,6 +31,7 @@ from dataset_scout.errors import LLMError
 from dataset_scout.llm_client import build_completion_kwargs, extract_content, import_litellm
 
 if TYPE_CHECKING:
+    from dataset_scout.cache import Cache
     from dataset_scout.context import ScoutContext
     from dataset_scout.sources.base import Source
 
@@ -367,6 +369,7 @@ def assess_strategies(
     timeout_s: float = 30.0,
     source: Source | None = None,
     sample_n: int = 8,
+    cache: Cache | None = None,
 ) -> list[Strategy]:
     """Ask the AOAI deployment for 1-4 ranked strategies for a candidate.
 
@@ -385,6 +388,11 @@ def assess_strategies(
     logged and the assessor degrades to the metadata-only path with a
     notice in the prompt; they never raise.
 
+    When ``cache`` is provided, identical (rendered prompt,
+    ASSESSOR_VERSION) inputs return without an LLM call. The prompt
+    encodes intent + candidate + sampled rows, so identical inputs
+    deterministically hit the cache.
+
     Returns strategies sorted by confidence descending. Capped at 4.
     """
     if not ctx.aoai_configured:
@@ -394,8 +402,6 @@ def assess_strategies(
             "auth)."
         )
 
-    litellm = import_litellm()
-
     sample_rows, sample_note = _fetch_sample_rows(source, candidate, sample_n)
     prompt = render_assessor_prompt(
         candidate,
@@ -403,6 +409,23 @@ def assess_strategies(
         sample_rows=sample_rows,
         sample_note=sample_note,
     )
+
+    cache_key: str | None = None
+    if cache is not None:
+        cache_key = hashlib.sha256(
+            (ASSESSOR_VERSION + "\n" + prompt).encode("utf-8")
+        ).hexdigest()
+        cached = cache.get_json("strategy", cache_key)
+        if cached is not None:
+            try:
+                payload = AssessorResponse.model_validate(cached)
+            except ValidationError:
+                pass
+            else:
+                return _finalise_strategies(payload, candidate)
+
+    litellm = import_litellm()
+
     messages: list[dict[str, str]] = [{"role": "user", "content": prompt}]
     completion_kwargs: dict[str, Any] = build_completion_kwargs(
         ctx,
@@ -432,6 +455,14 @@ def assess_strategies(
         msg = f"LLM returned invalid JSON twice: {last_parse_error}"
         raise LLMError(msg) from last_parse_error
 
+    if cache is not None and cache_key is not None:
+        cache.set_json("strategy", cache_key, parsed.model_dump(mode="json"))
+
+    return _finalise_strategies(parsed, candidate)
+
+
+def _finalise_strategies(parsed: AssessorResponse, candidate: Candidate) -> list[Strategy]:
+    """Drop composition_only, sort by confidence desc, cap at _MAX_STRATEGIES."""
     kept: list[_StrategyEntry] = []
     for entry in parsed.strategies:
         if entry.kind is StrategyKind.COMPOSITION_ONLY:

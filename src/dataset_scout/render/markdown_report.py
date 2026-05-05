@@ -19,12 +19,14 @@ from pathlib import Path
 
 from dataset_scout.core import (
     Evidence,
+    PaperReference,
     ReconResult,
     Scorecard,
     Strategy,
     StrategyKind,
     SubScore,
 )
+from dataset_scout.render._view import ReconReportContext
 
 
 def write_recon_report(result: ReconResult, out_dir: Path) -> Path:
@@ -41,35 +43,17 @@ def _has_strategies(result: ReconResult) -> bool:
 
 def render_recon_report(result: ReconResult) -> str:
     """Render a ReconResult to a Markdown string."""
+    ctx = ReconReportContext.from_result(result)
     buf = StringIO()
     intent = result.intent
-    metadata_only = any("Azure OpenAI is not configured" in n for n in result.notices)
-    llm_runtime_error = any("Azure OpenAI was configured but" in n for n in result.notices)
-    has_strategies = _has_strategies(result)
-    has_decomposition = bool(result.coverage and result.coverage.decomposition)
-    has_gaps = bool(result.coverage and result.coverage.semantic_gaps)
-    notable_gaps = bool(result.coverage and len(result.coverage.semantic_gaps) >= 2)
-
-    # Sparse-coverage mode: HF returned very little but the LLM
-    # decomposition + gaps are populated. The decomposition + gaps
-    # ARE the deliverable in this case; lead with them. (Recommendation
-    # E from the threat-intel walkthrough.)
-    sparse_coverage = (
-        has_decomposition
-        and has_gaps
-        and len(result.candidates) <= 5
-        and not metadata_only
-        and not llm_runtime_error
-    )
-    # No-direct-fit signal: LLM ran, but no candidate scored direct_use.
-    # Worth flagging so users don't expect ground-truth corpora.
-    no_direct_fits = bool(
-        has_strategies
-        and not any(
-            (sc.best_strategy is not None and sc.best_strategy.kind.value == "direct_use")
-            for sc in result.candidates
-        )
-    )
+    metadata_only = ctx.metadata_only
+    llm_runtime_error = ctx.llm_runtime_error
+    has_strategies = ctx.has_strategies
+    has_decomposition = ctx.has_decomposition
+    has_gaps = ctx.has_gaps
+    notable_gaps = ctx.notable_gaps
+    sparse_coverage = ctx.sparse_coverage
+    no_direct_fits = ctx.no_direct_fits
 
     buf.write("# dataset-scout recon report\n\n")
     if metadata_only:
@@ -223,6 +207,10 @@ def render_recon_report(result: ReconResult) -> str:
             buf.write(f"- **{gap.aspect}** — {gap.description}\n")
             buf.write(f"  - *Suggestion:* {gap.suggestion}\n")
         buf.write("\n")
+
+    # ─── Related papers + dataset citations (academic channel) ──
+    if ctx.show_papers:
+        _render_papers_section(buf, result, ctx)
 
     buf.write("\n---\n\n")
     buf.write(
@@ -393,3 +381,55 @@ def _safe_md(text: str | Evidence) -> str:
     if len(s) > 80:
         s = s[:77] + "..."
     return s
+
+
+def _render_papers_section(
+    buf: StringIO, result: ReconResult, ctx: ReconReportContext
+) -> None:
+    """Render the academic-paper discovery section.
+
+    Listed in round-robin order from `paper_search`. Papers with explicit
+    HF/Kaggle dataset URLs lead each entry's "datasets cited" sub-list;
+    GitHub citations follow as best-effort hints.
+    """
+    buf.write("## Related papers\n\n")
+    citations = ctx.n_paper_dataset_citations
+    if citations > 0:
+        buf.write(
+            f"{ctx.n_papers} paper(s) from NeurIPS / ICML / ICLR / SaTML "
+            f"with **{citations} dataset citation(s)** extracted from abstracts.\n\n"
+        )
+    else:
+        buf.write(
+            f"{ctx.n_papers} paper(s) from NeurIPS / ICML / ICLR / SaTML. "
+            "No dataset URLs found in abstracts — read the paper to find "
+            "the dataset directly.\n\n"
+        )
+    for p in result.papers:
+        _render_paper(buf, p)
+
+
+def _render_paper(buf: StringIO, p: PaperReference) -> None:
+    venue = p.venue or "?"
+    citations = f" · {p.citation_count} citation(s)" if p.citation_count else ""
+    surfaced = (
+        f"  - 🧭 *Surfaced by:* {', '.join(p.surfaced_by)}\n"
+        if p.surfaced_by
+        else ""
+    )
+    buf.write(f"### {p.title}\n\n")
+    authors = ", ".join(p.authors[:5]) + ("…" if len(p.authors) > 5 else "")
+    buf.write(f"- 👤 **Authors:** {authors or '(unknown)'}\n")
+    buf.write(f"- 🎓 **Venue:** {venue} {p.year}{citations}\n")
+    buf.write(f"- 🔗 **Link:** {p.url}\n")
+    if p.abstract:
+        snippet = p.abstract.strip().replace("\n", " ")[:280]
+        if len(p.abstract) > 280:
+            snippet += "…"
+        buf.write(f"- 📝 **Abstract:** {snippet}\n")
+    buf.write(surfaced)
+    if p.referenced_datasets:
+        buf.write("- 📦 **Datasets cited:**\n")
+        for d in p.referenced_datasets:
+            buf.write(f"  - `{d.source}:{d.identifier}` — {d.url}\n")
+    buf.write("\n")

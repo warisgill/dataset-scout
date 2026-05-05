@@ -14,19 +14,18 @@ def test_default_context_has_expected_sources():
     names = list(ctx.sources)
     assert "huggingface" in names
     assert "kaggle" in names
-    assert "pwc" in names
-    # Kaggle is opt-in (needs creds) — disabled by default.
-    assert ctx.sources["kaggle"].enabled is False
+    # Kaggle is enabled-by-default; the factory quietly skips it when
+    # no creds are present, so the user-visible behaviour is "if you
+    # configure Kaggle, it just works".
+    assert ctx.sources["kaggle"].enabled is True
     assert ctx.sources["huggingface"].enabled is True
-    assert ctx.sources["pwc"].enabled is True
 
 
 def test_enabled_sources_filters():
     ctx = ScoutContext.from_env(env={})
     enabled = list(ctx.enabled_sources())
     assert "huggingface" in enabled
-    assert "pwc" in enabled
-    assert "kaggle" not in enabled
+    assert "kaggle" in enabled
 
 
 def test_from_env_picks_up_api_keys():

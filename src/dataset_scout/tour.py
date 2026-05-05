@@ -272,12 +272,18 @@ def render_tour(out_dir: Path | None = None) -> str:
     """
     from dataset_scout.decomposition_io import write_decomposition
     from dataset_scout.recipe_draft import write_recipe_draft
-    from dataset_scout.render import render_recon_report, write_recon_report, write_results_json
+    from dataset_scout.render import (
+        render_recon_report,
+        write_recon_report,
+        write_recon_report_html,
+        write_results_json,
+    )
 
     result = build_tour_result()
     if out_dir is not None:
         write_results_json(result, out_dir)
         write_recon_report(result, out_dir)
+        write_recon_report_html(result, out_dir)
         write_recipe_draft(result, out_dir)
         if result.coverage:
             write_decomposition(result.coverage.decomposition, out_dir)

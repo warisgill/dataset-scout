@@ -1,0 +1,571 @@
+"""Academic-paper discovery channel.
+
+Adds a discovery surface beyond the dataset-platform Source plugins:
+papers from leading ML / security venues that may *cite* relevant
+datasets. The pipeline runs this stage between probes and the strategy
+assessor and:
+
+  1. Records the relevant papers (title, abstract, link) in
+     `ReconResult.papers` so the report can render a "Related papers
+     and dataset citations" section.
+  2. Promotes any HuggingFace / Kaggle dataset URL extracted from a
+     paper's abstract into the existing candidate pool, with
+     `surfaced_by` carrying the paper id. Existing strategy /
+     coverage flow then runs over those candidates normally.
+
+Why a stage and not a Source plugin? Papers ≠ datasets. A Source's
+contract is to yield Candidates that are datasets; mixing papers in
+breaks the strategy assessor (no rows to stream, no transform). Papers
+are referrers — different shape, separate render section.
+
+Backed by the **Semantic Scholar Graph API** (free, no auth required
+for moderate use). Single endpoint covers all four target venues with
+abstracts and citation counts.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from collections.abc import Iterable
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
+
+import httpx
+
+from dataset_scout.core import (
+    Candidate,
+    CandidateMetadata,
+    DecompositionDirection,
+    ExtractedDataset,
+    Intent,
+    PaperReference,
+)
+
+if TYPE_CHECKING:
+    from dataset_scout.cache import Cache
+
+
+_log = logging.getLogger(__name__)
+
+# Bumped when query construction or extraction policy changes in a way
+# that would invalidate cached search results.
+PAPER_SEARCH_VERSION = "1"
+
+_S2_BULK_SEARCH = "https://api.semanticscholar.org/graph/v1/paper/search/bulk"
+_S2_FIELDS = ",".join(
+    [
+        "paperId",
+        "title",
+        "abstract",
+        "venue",
+        "year",
+        "authors",
+        "citationCount",
+        "url",
+        "externalIds",
+    ]
+)
+
+# Default per-query result cap. The user-facing per-recon cap is much
+# smaller; this is just the page size we ask S2 for.
+_DEFAULT_LIMIT = 50
+
+# Default ceiling on papers retained per recon, after dedupe across
+# queries and venues. Keeps the report scannable.
+_DEFAULT_MAX_PAPERS = 12
+
+# Window of recent years to query.
+_DEFAULT_YEAR_WINDOW = 4
+
+# Per-direction keyword cap, mirroring the HF / Kaggle plugins.
+_KEYWORDS_PER_DIRECTION = 3
+
+_DEFAULT_TIMEOUT = 15.0
+
+
+# ─── venue normalisation ────────────────────────────────────────────
+
+
+# S2 indexes papers under canonical venue strings; passing aliases
+# (short and long forms) maximises recall without requiring users to
+# know which form S2 uses for a given conference. The order doesn't
+# matter — S2's `venue` parameter is a comma-separated OR.
+_VENUE_ALIASES: dict[str, list[str]] = {
+    "NeurIPS": [
+        "NeurIPS",
+        "Neural Information Processing Systems",
+        "Advances in Neural Information Processing Systems",
+    ],
+    "ICML": [
+        "ICML",
+        "International Conference on Machine Learning",
+    ],
+    "ICLR": [
+        "ICLR",
+        "International Conference on Learning Representations",
+    ],
+    "SaTML": [
+        "SaTML",
+        "IEEE Conference on Secure and Trustworthy Machine Learning",
+    ],
+}
+
+
+# Reverse map: any alias → canonical short name. Used when an S2
+# response carries a long-form venue and we want a tidy display label.
+_VENUE_CANONICAL: dict[str, str] = {
+    alias.lower(): short for short, aliases in _VENUE_ALIASES.items() for alias in aliases
+}
+
+
+DEFAULT_VENUES: tuple[str, ...] = ("NeurIPS", "ICML", "ICLR", "SaTML")
+
+
+def canonical_venue(raw: str) -> str:
+    """Map a venue string returned by S2 onto our canonical short form.
+
+    Falls back to the raw value when no alias matches.
+    """
+    return _VENUE_CANONICAL.get(raw.strip().lower(), raw.strip())
+
+
+def venue_filter_value(venues: Iterable[str]) -> str:
+    """Build the comma-separated `venue` parameter for S2's search/bulk."""
+    expanded: list[str] = []
+    for v in venues:
+        aliases = _VENUE_ALIASES.get(v, [v])
+        expanded.extend(aliases)
+    # De-dupe preserving order.
+    seen: set[str] = set()
+    out: list[str] = []
+    for a in expanded:
+        if a not in seen:
+            seen.add(a)
+            out.append(a)
+    return ",".join(out)
+
+
+# ─── extraction ─────────────────────────────────────────────────────
+
+
+# HF dataset slugs accept word chars, dots, hyphens; ids may be either
+# `<namespace>/<slug>` or just `<slug>` for legacy datasets.
+_RE_HF_DATASET = re.compile(
+    r"https?://huggingface\.co/datasets/(?P<id>[A-Za-z0-9_\-.]+(?:/[A-Za-z0-9_\-.]+)?)",
+    re.IGNORECASE,
+)
+_RE_KAGGLE_DATASET = re.compile(
+    r"https?://(?:www\.)?kaggle\.com/datasets/(?P<id>[A-Za-z0-9_\-.]+/[A-Za-z0-9_\-.]+)",
+    re.IGNORECASE,
+)
+# A loose match for GitHub repos sometimes mentioned as data releases.
+# Conservative: only match when the URL ends with `/data`, `-data`,
+# `-dataset`, or contains the word "dataset" in the path.
+_RE_GITHUB_DATA = re.compile(
+    r"https?://github\.com/(?P<id>[A-Za-z0-9_\-.]+/[A-Za-z0-9_\-.]+)"
+    r"(?P<suffix>(?:[/-]data(?:set)?|/[A-Za-z0-9_\-.]*dataset[A-Za-z0-9_\-.]*)?)",
+    re.IGNORECASE,
+)
+
+
+def extract_dataset_references(text: str | None) -> list[ExtractedDataset]:
+    """Pull explicit dataset URLs out of free-text (an abstract).
+
+    v1 is regex-only over HF + Kaggle URLs (high precision) plus a
+    conservative GitHub data-repo match. LLM-based "what dataset does
+    this paper rely on?" extraction is deferred. De-duped by url.
+    """
+    if not text:
+        return []
+    out: list[ExtractedDataset] = []
+    seen: set[str] = set()
+
+    for m in _RE_HF_DATASET.finditer(text):
+        ident = m.group("id").rstrip("/.")
+        url = f"https://huggingface.co/datasets/{ident}"
+        if url not in seen:
+            seen.add(url)
+            out.append(
+                ExtractedDataset(
+                    source="huggingface",
+                    identifier=ident,
+                    url=url,
+                    confidence="explicit_url",
+                )
+            )
+    for m in _RE_KAGGLE_DATASET.finditer(text):
+        ident = m.group("id").rstrip("/.")
+        url = f"https://www.kaggle.com/datasets/{ident}"
+        if url not in seen:
+            seen.add(url)
+            out.append(
+                ExtractedDataset(
+                    source="kaggle",
+                    identifier=ident,
+                    url=url,
+                    confidence="explicit_url",
+                )
+            )
+    for m in _RE_GITHUB_DATA.finditer(text):
+        suffix = m.group("suffix") or ""
+        if not suffix:
+            continue  # skip generic GitHub repo refs
+        ident = m.group("id").rstrip("/.")
+        url = f"https://github.com/{ident}{suffix}"
+        if url not in seen:
+            seen.add(url)
+            out.append(
+                ExtractedDataset(
+                    source="github",
+                    identifier=ident,
+                    url=url,
+                    confidence="explicit_url",
+                )
+            )
+    return out
+
+
+# ─── query construction ────────────────────────────────────────────
+
+
+def _build_intent_query(intent: Intent) -> str:
+    """One-shot query string for the original brief.
+
+    Mirrors HuggingFaceSource: prefer threat_families when populated
+    (high-precision lexical signal); otherwise fall back to the brief.
+    """
+    if intent.threat_families:
+        return " ".join(f.replace("_", " ") for f in intent.threat_families)
+    return intent.raw_brief.strip()
+
+
+def _direction_queries(direction: DecompositionDirection) -> list[str]:
+    """Per-keyword queries — same shape as the Source plugins."""
+    if direction.keywords:
+        return list(direction.keywords[:_KEYWORDS_PER_DIRECTION])
+    return [direction.name.replace("_", " ")]
+
+
+def default_year_range(window: int = _DEFAULT_YEAR_WINDOW) -> tuple[int, int]:
+    """Last `window` years, inclusive of the current year."""
+    now = datetime.now(UTC).year
+    return now - window + 1, now
+
+
+# ─── public entry point ────────────────────────────────────────────
+
+
+def find_papers_and_promote(
+    intent: Intent,
+    directions: list[DecompositionDirection],
+    *,
+    venues: Iterable[str] = DEFAULT_VENUES,
+    year_range: tuple[int, int] | None = None,
+    max_papers: int = _DEFAULT_MAX_PAPERS,
+    cache: Cache | None = None,
+    client: httpx.Client | None = None,
+    timeout_s: float = _DEFAULT_TIMEOUT,
+) -> tuple[list[PaperReference], list[Candidate]]:
+    """Search target venues for relevant papers; extract dataset citations.
+
+    Returns ``(papers, promoted_candidates)``:
+
+    - ``papers`` — list of `PaperReference` capped at ``max_papers``,
+      deduped by paper_id, in original-query order (round-robin across
+      brief + per-direction queries) so every direction contributes.
+    - ``promoted_candidates`` — `Candidate` objects derived from
+      explicit HF / Kaggle URLs in the abstracts. The pipeline merges
+      these into the existing pool by (source, id) — see
+      `pipeline._merge_or_register` — so paper provenance shows up as
+      `surfaced_by` on whichever candidate already carries the data.
+
+    Failures (network, parse, S2 5xx) log a warning and return
+    ``([], [])`` — recon must not be blocked by paper-discovery
+    infrastructure.
+    """
+    yr = year_range or default_year_range()
+    queries = _enumerate_queries(intent, directions)
+    if not queries:
+        return [], []
+
+    own_client = False
+    if client is None:
+        client = httpx.Client(timeout=timeout_s)
+        own_client = True
+    try:
+        per_query: list[list[PaperReference]] = []
+        for surfaced_by, q in queries:
+            results = _fetch_one(
+                q,
+                venues=venues,
+                year_range=yr,
+                surfaced_by=surfaced_by,
+                client=client,
+                cache=cache,
+                timeout_s=timeout_s,
+            )
+            per_query.append(results)
+    finally:
+        if own_client:
+            client.close()
+
+    # Round-robin merge so every query / direction contributes a
+    # paper before any single query saturates the budget.
+    deduped = _round_robin_dedupe(per_query, cap=max_papers)
+
+    # Promote extracted HF/Kaggle datasets into Candidates.
+    candidates = _promote_datasets(deduped)
+    return deduped, candidates
+
+
+def _enumerate_queries(
+    intent: Intent, directions: list[DecompositionDirection]
+) -> list[tuple[list[str], str]]:
+    """Build the (surfaced_by, query) tuples this stage will issue."""
+    out: list[tuple[list[str], str]] = []
+    intent_q = _build_intent_query(intent)
+    if intent_q:
+        out.append(([], intent_q))
+    for d in directions:
+        for q in _direction_queries(d):
+            if q:
+                out.append(([d.name], q))
+    return out
+
+
+def _round_robin_dedupe(
+    per_query: list[list[PaperReference]],
+    *,
+    cap: int,
+) -> list[PaperReference]:
+    """Interleave per-query results, deduping by paper_id, capped at `cap`.
+
+    Identical to the HF / Kaggle search round-robin but on PaperReferences.
+    When the same paper appears in multiple queries, surfaced_by is
+    merged.
+    """
+    by_id: dict[str, PaperReference] = {}
+    out: list[PaperReference] = []
+    idx = 0
+    any_left = True
+    while any_left and len(out) < cap:
+        any_left = False
+        for results in per_query:
+            if idx < len(results):
+                any_left = True
+                p = results[idx]
+                existing = by_id.get(p.paper_id)
+                if existing is None:
+                    by_id[p.paper_id] = p
+                    out.append(p)
+                    if len(out) >= cap:
+                        break
+                else:
+                    # Merge surfaced_by, preserving order.
+                    merged = list(existing.surfaced_by)
+                    for s in p.surfaced_by:
+                        if s not in merged:
+                            merged.append(s)
+                    if merged != existing.surfaced_by:
+                        # Pydantic frozen check: ReconResult papers list
+                        # holds non-frozen models, so direct mutation works.
+                        existing.surfaced_by = merged
+        idx += 1
+    return out
+
+
+def _promote_datasets(papers: list[PaperReference]) -> list[Candidate]:
+    """Convert HF / Kaggle dataset citations into Candidates with paper provenance.
+
+    GitHub citations are kept on the paper but not promoted to candidates
+    — the dataset-scout candidate pool is keyed on plugin sources and
+    GitHub isn't one. The paper still carries the GitHub link for the
+    reader.
+    """
+    candidates: list[Candidate] = []
+    seen: set[tuple[str, str]] = set()
+    for p in papers:
+        for d in p.referenced_datasets:
+            if d.source not in ("huggingface", "kaggle"):
+                continue
+            key = (d.source, d.identifier)
+            if key in seen:
+                continue
+            seen.add(key)
+            tag = f"paper:{canonical_venue(p.venue)}-{p.year}-{p.paper_id}"
+            candidates.append(
+                Candidate(
+                    source=d.source,
+                    id=d.identifier,
+                    revision=None,
+                    metadata=CandidateMetadata(
+                        description=p.title,
+                        card_url=d.url,
+                    ),
+                    streamable=(d.source == "huggingface"),
+                    surfaced_by=[tag],
+                )
+            )
+    return candidates
+
+
+# ─── HTTP fetch + cache ────────────────────────────────────────────
+
+
+def _cache_key(query: str, venues: Iterable[str], year_range: tuple[int, int]) -> str:
+    import hashlib
+
+    canonical = (
+        f"{PAPER_SEARCH_VERSION}\n"
+        f"{','.join(sorted(set(venues)))}\n"
+        f"{year_range[0]}-{year_range[1]}\n"
+        f"{query}"
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _fetch_one(
+    query: str,
+    *,
+    venues: Iterable[str],
+    year_range: tuple[int, int],
+    surfaced_by: list[str],
+    client: httpx.Client,
+    cache: Cache | None,
+    timeout_s: float,
+) -> list[PaperReference]:
+    """Fetch one query against S2 (with cache); return PaperReferences.
+
+    Hits the cache first. On miss, calls the API; on success, caches a
+    JSON-serialised list. Any failure returns [] and logs.
+    """
+    venues_list = list(venues)
+    key = _cache_key(query, venues_list, year_range)
+    if cache is not None:
+        cached = cache.get_json("papers", key)
+        if isinstance(cached, list):
+            try:
+                return [
+                    _model_validate_with_surfaced_by(item, surfaced_by) for item in cached
+                ]
+            except Exception:  # pragma: no cover - defensive
+                pass
+
+    params: dict[str, str] = {
+        "query": query,
+        "venue": venue_filter_value(venues_list),
+        "year": f"{year_range[0]}-{year_range[1]}",
+        "fields": _S2_FIELDS,
+        "limit": str(_DEFAULT_LIMIT),
+    }
+    try:
+        response = client.get(_S2_BULK_SEARCH, params=params, timeout=timeout_s)
+        response.raise_for_status()
+        payload = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        _log.warning("paper search failed for query=%r: %s", query, exc)
+        return []
+
+    raw_data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(raw_data, list):
+        return []
+
+    records: list[dict[str, Any]] = []
+    parsed: list[PaperReference] = []
+    for raw in raw_data:
+        if not isinstance(raw, dict):
+            continue
+        paper = _normalise_s2_paper(raw)
+        if paper is None:
+            continue
+        # Persist a surfaced_by-stripped variant in cache so the same
+        # cached result can be re-attributed across different runs.
+        records.append(_to_cacheable(paper))
+        # The per-call return carries this query's surfaced_by tag.
+        attributed = paper.model_copy(update={"surfaced_by": list(surfaced_by)})
+        parsed.append(attributed)
+
+    if cache is not None and records:
+        cache.set_json("papers", key, records)
+    return parsed
+
+
+def _to_cacheable(paper: PaperReference) -> dict[str, Any]:
+    """Drop surfaced_by before caching — it depends on the calling query."""
+    payload = paper.model_dump(mode="json")
+    payload["surfaced_by"] = []
+    return payload
+
+
+def _model_validate_with_surfaced_by(
+    payload: dict[str, Any], surfaced_by: list[str]
+) -> PaperReference:
+    """Rehydrate a cached record and overlay this call's surfaced_by tag."""
+    paper = PaperReference.model_validate(payload)
+    return paper.model_copy(update={"surfaced_by": list(surfaced_by)})
+
+
+def _normalise_s2_paper(raw: dict[str, Any]) -> PaperReference | None:
+    """Translate an S2 paper payload into our typed PaperReference.
+
+    Returns None when essential fields are missing (no title, no
+    paper_id, or no year). S2 occasionally returns sparse records.
+    """
+    paper_id = raw.get("paperId")
+    title = raw.get("title")
+    year = raw.get("year")
+    venue = raw.get("venue") or ""
+    if not isinstance(paper_id, str) or not isinstance(title, str) or not isinstance(year, int):
+        return None
+
+    abstract = raw.get("abstract") if isinstance(raw.get("abstract"), str) else None
+    citation_count = raw.get("citationCount") if isinstance(raw.get("citationCount"), int) else None
+
+    authors_raw = raw.get("authors") or []
+    authors: list[str] = []
+    if isinstance(authors_raw, list):
+        for a in authors_raw:
+            if isinstance(a, dict) and isinstance(a.get("name"), str):
+                authors.append(a["name"])
+
+    url = _resolve_paper_url(raw, paper_id)
+    references = extract_dataset_references(abstract)
+
+    return PaperReference(
+        paper_id=paper_id,
+        title=title,
+        authors=authors,
+        venue=canonical_venue(venue) if venue else "",
+        year=year,
+        url=url,
+        abstract=abstract,
+        citation_count=citation_count,
+        referenced_datasets=references,
+        surfaced_by=[],  # filled in by caller
+    )
+
+
+def _resolve_paper_url(raw: dict[str, Any], paper_id: str) -> str:
+    """Prefer the externally-resolvable URL when S2 provides one."""
+    url = raw.get("url")
+    if isinstance(url, str) and url:
+        return url
+    ext = raw.get("externalIds")
+    if isinstance(ext, dict):
+        if isinstance(ext.get("ArXiv"), str):
+            return f"https://arxiv.org/abs/{ext['ArXiv']}"
+        if isinstance(ext.get("DOI"), str):
+            return f"https://doi.org/{ext['DOI']}"
+    return f"https://www.semanticscholar.org/paper/{paper_id}"
+
+
+__all__ = [
+    "DEFAULT_VENUES",
+    "PAPER_SEARCH_VERSION",
+    "canonical_venue",
+    "default_year_range",
+    "extract_dataset_references",
+    "find_papers_and_promote",
+    "venue_filter_value",
+]

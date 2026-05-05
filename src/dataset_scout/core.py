@@ -323,6 +323,48 @@ class CoverageReport(BaseModel):
         return len(self.semantic_gaps) >= 2
 
 
+# ─── Academic paper discovery ────────────────────────────────────────
+
+
+class ExtractedDataset(BaseModel):
+    """A dataset reference pulled from a paper's abstract or metadata.
+
+    `confidence` distinguishes high-precision URL matches from softer
+    signals so the report can lead with explicit citations and only
+    surface inferred ones with hedging.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source: Literal["huggingface", "kaggle", "github", "url"]
+    identifier: str
+    url: str
+    confidence: Literal["explicit_url", "name_match", "llm_inferred"] = "explicit_url"
+
+
+class PaperReference(BaseModel):
+    """A paper relevant to the brief from one of the configured venues.
+
+    Papers are *referrers* to datasets, not datasets themselves: this
+    lives in `ReconResult.papers` separately from `candidates`. When a
+    paper cites a HF or Kaggle dataset, the pipeline ALSO promotes that
+    dataset into `candidates` with `surfaced_by` carrying the paper id.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    paper_id: str
+    title: str
+    authors: list[str] = Field(default_factory=list)
+    venue: str
+    year: int
+    url: str
+    abstract: str | None = None
+    citation_count: int | None = None
+    referenced_datasets: list[ExtractedDataset] = Field(default_factory=list)
+    surfaced_by: list[str] = Field(default_factory=list)
+
+
 # ─── Normalized record (curate output schema) ────────────────────────
 
 
@@ -499,6 +541,7 @@ class ReconResult(BaseModel):
     candidates: list[Scorecard] = Field(default_factory=list)
     sources_searched: list[str] = Field(default_factory=list)
     coverage: CoverageReport | None = None
+    papers: list[PaperReference] = Field(default_factory=list)
     elapsed_seconds: float = 0.0
     notices: list[str] = Field(default_factory=list)
     scout_version: str = "0.0.1"

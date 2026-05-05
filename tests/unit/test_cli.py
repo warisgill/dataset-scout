@@ -51,7 +51,6 @@ def test_version(runner: CliRunner):
 @pytest.mark.parametrize(
     "argv",
     [
-        ["cache", "info"],
         ["sources", "enable", "kaggle"],
     ],
 )
@@ -61,9 +60,30 @@ def test_verbs_exit_with_not_implemented_notice(runner: CliRunner, argv: list[st
     assert "not implemented yet" in result.output
 
 
+def test_cache_info_runs(runner: CliRunner, tmp_path, monkeypatch):
+    """`datascout cache info` summarises an empty cache without crashing."""
+    monkeypatch.setenv("DATASET_SCOUT_CACHE_DIR", str(tmp_path))
+    result = runner.invoke(app, ["cache", "info"])
+    assert result.exit_code == 0
+    assert "Cache:" in result.output
+
+
+def test_cache_prune_runs(runner: CliRunner, tmp_path, monkeypatch):
+    monkeypatch.setenv("DATASET_SCOUT_CACHE_DIR", str(tmp_path))
+    result = runner.invoke(app, ["cache", "prune"])
+    assert result.exit_code == 0
+    assert "Removed" in result.output
+
+
+def test_cache_clear_runs(runner: CliRunner, tmp_path, monkeypatch):
+    monkeypatch.setenv("DATASET_SCOUT_CACHE_DIR", str(tmp_path))
+    result = runner.invoke(app, ["cache", "clear"])
+    assert result.exit_code == 0
+    assert "Removed" in result.output
+
+
 def test_sources_list_runs(runner: CliRunner):
     result = runner.invoke(app, ["sources", "list"])
     assert result.exit_code == 0
     assert "huggingface" in result.output
     assert "kaggle" in result.output
-    assert "pwc" in result.output

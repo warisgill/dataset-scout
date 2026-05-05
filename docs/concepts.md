@@ -101,25 +101,25 @@ draft is curate-ready without those probes shipping.
 
 ## 5. The strategy taxonomy
 
-Per-candidate, the LLM strategy assessor returns 1–4 ranked `Strategy`
-objects from this 7-kind taxonomy:
+The LLM strategy assessor returns 1–4 ranked `Strategy` objects per
+candidate. Three of them carry most of the weight:
 
-| Kind | Meaning |
-|---|---|
-| `direct_use` | Labels and content map cleanly to your task. |
-| `subset_extraction` | Only some rows are relevant; filter to subset. |
-| `label_remapping` | Same data, different label semantics. |
-| `cross_class_repurposing` | Original positives → hard-negatives, or vice versa. |
-| `signal_proxy` | Adjacent threat used as proxy positive during cold start. |
-| `benign_baseline` | No relevant positives, but useful as benign distribution. |
-| `not_useful` | The honest answer when nothing fits. |
+- **`direct_use`** — labels and content map cleanly to your task.
+- **`reframing`** (covers `subset_extraction`, `label_remapping`,
+  `cross_class_repurposing`) — same data, new shape: a subset of
+  rows, a relabeled view, or original positives turned into hard
+  negatives.
+- **`signal_proxy`** — adjacent threat used as a proxy positive
+  during cold start. Honest about being a proxy.
 
-(An eighth kind — `composition_only` — is reserved in the enum for a
-future portfolio-level pass, when the assessor evaluates pairs/triples
-rather than single candidates. Per-candidate assessments today never
-emit it.)
+Plus three edge cases: **`benign_baseline`** (no positives, useful
+as benign distribution), **`not_useful`** (the honest answer when
+nothing fits), and the implementation detail that the three
+"reframing" kinds are tracked separately in the wire format
+(`subset_extraction`, `label_remapping`, `cross_class_repurposing`)
+so the rationale per row stays specific.
 
-Each strategy carries a `confidence ∈ [0, 1]`, a written rationale,
+Each strategy carries a `confidence ∈ [0, 1]`, written rationale,
 caveats, and a concrete `transform` spec (column maps, label
 value-maps, filters). The assessor is **conservative-but-creative**:
 stretches get low confidence, and `--min-strategy-confidence` filters

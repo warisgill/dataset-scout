@@ -295,27 +295,45 @@ prompts are **snapshot-tested** — drift surfaces as a PR diff.
 
 ---
 
-## 10. Milestones
+## 10. Status & roadmap
 
-| Milestone | Status | What's in |
-|---|---|---|
-| M0 | ✅ done | scaffolding: pyproject, src layout, core types, CLI stubs, 30 tests |
-| M1a | ✅ done | discovery slice — HF, 6 cheap probes, report.md / results.json, FakeSource, recorded harness |
-| M1b | ⏳ deferred | sample-driven probes, embedding fit, Kaggle, PWC, cache |
-| M2a | ✅ done | Azure OpenAI Entra, LLM decomposition, multi-direction search, surfaced_by, mode detection |
-| M2b | ✅ done | strategy assessor, coverage report, recipe.draft.yaml, two-stage shortlist, ranked report |
-| **Wow loop** | ✅ done | `tour` (no-setup demo), `decompose` (cheap brief iteration), `--decomposition-from` reuse, **row-aware strategy assessor** (recipes ship with REAL columns), `compose` (multi-recipe merge), sourcing-roadmap-led report, brief-smell hints |
-| M3 | ✅ done | `inspect` deep-dive — schema + Wilson-CI label distribution + length stats + license + strategy assessment |
-| M4a | ✅ done | `curate` preview slice — recipe → JSONL + lockfile + manifest + report + fingerprint + usage. |
-| M4b | ✅ done | **MinHash dedup + leakage-aware splitter + filter DSL** — flips `recipe.lock.yaml` `audit_readiness: preview → ready`. Filter expressions sandboxed via `filter_dsl.py`; near-dup clusters (Jaccard ≥ 0.8 over char 5-grams) routed to a single split. |
-| M4c | ✅ done | **Per-component soft failures** — gated datasets, missing configs, bad splits, parse errors, and unknown errors are classified, recorded under `failed_components` in the lockfile + report with actionable hints, and curate continues with the rest. Pipeline only fails if every component errors. |
-| M5 | ✅ done | **Real-brief validation + edge hardening.** Each unfamiliar brief surfaces 2–4 ergonomic edges; we close them in the same session. Closed: `decompose --out` file/dir routing, decomposition-keyword precision (10× usable strategies on a frontier brief, 0 off-topic noise), `take: all` materialization-time blowup (auto-cap + `--max-rows-per-component`), search round-robin fairness (every direction contributes), **parallel component materialisation** via `ThreadPoolExecutor` with deterministic reassembly. |
-| M9-min | ✅ done | **Stable row IDs.** `NormalizedRecord.stable_id` joins four already-recorded provenance fields into one corpus-global handle (`<source>::<config>::<split>::<source_row_id>`). Used by M10's checkpoint + the eval `EvalResult` join. M9-full (lineage DAG + resumable-operation envelope) layers on top without changing the format. |
-| **M10** | ✅ done | **`datascout judge` + `datascout eval`.** LLM-as-judge label rescue: per-row Azure OpenAI calls under a single labeling axis, sha256-keyed disk cache, per-batch checkpoint, multi-judge agreement (single / majority-of-3 / unanimous-of-5) with derived `label_confidence`, explicit-gap promotion at threshold (default 0.8), calibration loop (`--calibrate-against` → P/R/F1 vs gold + optional precision floor), and a generic `eval` verb that scores any judged corpus against any gold corpus. Lockfile + report mirror the design doc shape; soft per-row failures (API errors, parse errors with one retry, AOAI content-filter blocks, cache corruption) keep the run going. Live-validated on the M5 psych-harm corpus end-to-end. |
-| M9-full / M11 | ⏭ next | Lineage DAG + resumable-operation envelope; portfolio composer pass. |
+The product surface is feature-complete for its core loop: **brief →
+recon → curate**. Below is the honest state.
 
-Detail in [`docs/concepts.md`](concepts.md) and the (archived)
-TECH_DESIGN spec.
+### Shipped
+
+| Capability | What's in |
+|---|---|
+| **Discovery (dataset platforms)** | HuggingFace + Kaggle source plugins, 6 metadata-driven probes, deduplicated multi-source candidate pool, `surfaced_by` provenance. Kaggle is discovery-only — `stream_sample`/`stream_rows` raise `SourceUnsupportedError` and curate classifies the candidate under `unsupported_source` with a hint. |
+| **Discovery (academic papers)** | Pipeline stage (not a Source plugin — papers ≠ datasets) querying Semantic Scholar across NeurIPS / ICML / ICLR / SaTML. Round-robin per-direction queries, regex extraction of HF/Kaggle/GitHub dataset URLs from abstracts, deduped + capped at 12 papers per recon. Cited HF / Kaggle datasets are promoted into the candidate pool with `surfaced_by` carrying the paper id; existing strategy / coverage flow then runs over them. CLI: `--no-papers` opts out. Cached per `(venue-set, year-range, query)`. |
+| **Cache** | SQLite WAL at `<ctx.cache_dir>/cache.db`. Namespace-scoped TTL defaults with per-call override; age-based eviction at a 2 GB cap (`DATASET_SCOUT_CACHE_MAX_BYTES`); read paths never write. Wraps decompose, strategy, embedding, and paper-search calls. CLI: `datascout cache info\|prune\|clear`. |
+| **LLM decomposition** | Azure OpenAI / Entra. Brief → 3–7 adjacent search directions. Reusable via `--decomposition-from` for cheap iteration. Cached. Mode-detection falls back to metadata-only with an explicit notice when AOAI is absent. |
+| **Row-aware strategy assessor** | For each shortlisted candidate: stream 8 real rows → LLM call → 1–4 ranked strategies from the 7-kind taxonomy with rationale, caveats, and a transform spec referencing **actual** columns and label values. Cached. |
+| **Embedding label-intent fit** | Dedicated pipeline stage between probes and the assessor. Embeds intent text + a deterministic candidate text (description + canonical row sample) via Azure OpenAI embeddings (`AZURE_OPENAI_EMBEDDING_DEPLOYMENT`). Writes `Scorecard.label_intent_fit`. Cached per text hash; the intent embedding is reused across candidates. |
+| **Coverage-gap report** | What no candidate covers and where to source it. Leads `report.md`/`report.html` when notable. |
+| **Reports** | `report.md` (audit-friendly Markdown) and `report.html` (self-contained HTML, embedded CSS, color-coded strategy badges, no JS) rendered from a shared `ReconReportContext` view-model so the two can't drift. |
+| **`tour`** | Canned no-setup demo. Writes both Markdown and HTML when `--out` is given. |
+| **`inspect`** | Single-candidate deep-dive: schema, Wilson 95% CI label distribution, length stats, license, strategy assessment. |
+| **`curate`** | Audit-ready: parallel materialisation with deterministic reassembly, MinHash + LSH dedup, leakage-aware splits, sandboxed filter DSL, per-component soft-failure classification (now including `unsupported_source` for Kaggle), full `recipe.lock.yaml` audit trail. |
+| **`judge` + `eval`** | Opt-in LLM-as-judge label rescue with sha256-cached verdicts, per-batch resumable checkpoint, multi-judge agreement, explicit-gap promotion, calibration mode with precision floor. Standalone `eval` against any gold corpus. |
+| **`compose`** | Merge multiple recipes for shared multi-detection corpora. |
+
+### Considering
+
+- **`--watch`/re-validate mode.** Re-check a `recipe.lock.yaml`
+  against current upstream revisions: *"has anything I depend on
+  moved?"*
+- **Archive option.** Pin contents (not just revisions) so a corpus
+  is reproducible even if upstream deletes the data.
+
+### Deferred
+
+- **Lineage DAG + resumable-operation envelope.** Engineering
+  cleanup with no user request behind it. Revisit when somebody asks.
+- **Multi-candidate portfolio assessor + the `composition_only` 8th
+  strategy kind.** Clever, not yet earned.
+- **Papers-with-Code source plugin.** Entry-point hook reserved; not
+  yet wired.
 
 ---
 

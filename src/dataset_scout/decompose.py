@@ -16,6 +16,7 @@ metadata-only path stays fast.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import TYPE_CHECKING, Any
 
@@ -25,6 +26,7 @@ from dataset_scout.core import DecompositionDirection, Intent
 from dataset_scout.errors import LLMError
 
 if TYPE_CHECKING:
+    from dataset_scout.cache import Cache
     from dataset_scout.context import ScoutContext
 
 # Bumped when prompt or response handling changes in a way that would
@@ -192,6 +194,7 @@ def decompose_intent(
     *,
     ctx: ScoutContext,
     timeout_s: float = 30.0,
+    cache: Cache | None = None,
 ) -> list[DecompositionDirection]:
     """Ask the AOAI deployment for 3-7 related search directions.
 
@@ -202,6 +205,10 @@ def decompose_intent(
 
     Result is clipped at 7 directions; an empty list is returned
     cleanly when the model honestly reports no useful adjacencies.
+
+    When `cache` is provided, identical (prompt, DECOMPOSE_VERSION)
+    inputs return without an LLM call. Cache hits skip the litellm
+    import entirely.
     """
     if not ctx.aoai_configured:
         raise LLMError(
@@ -209,6 +216,27 @@ def decompose_intent(
             "and AZURE_OPENAI_DEPLOYMENT (and run `az login` for Entra "
             "auth)."
         )
+
+    prompt = render_decompose_prompt(intent)
+
+    # Cache check before any heavy import. Key on the rendered prompt
+    # plus the version sentinel — that captures intent + template +
+    # any future prompt edit boundary in one place.
+    cache_key: str | None = None
+    if cache is not None:
+        cache_key = hashlib.sha256(
+            (DECOMPOSE_VERSION + "\n" + prompt).encode("utf-8")
+        ).hexdigest()
+        cached = cache.get_json("decompose", cache_key)
+        if cached is not None:
+            try:
+                payload = DecomposeResponse.model_validate(cached)
+            except ValidationError:
+                # Cache was written by an older/incompatible version —
+                # treat as a miss.
+                pass
+            else:
+                return list(payload.directions[:_MAX_DIRECTIONS])
 
     try:
         import litellm
@@ -221,7 +249,6 @@ def decompose_intent(
 
     token_provider = _make_token_provider()
 
-    prompt = render_decompose_prompt(intent)
     messages = [{"role": "user", "content": prompt}]
 
     # litellm convention: prefix the deployment name with `azure/` so
@@ -261,5 +288,8 @@ def decompose_intent(
     if parsed is None:
         msg = f"LLM returned invalid JSON twice: {last_parse_error}"
         raise LLMError(msg) from last_parse_error
+
+    if cache is not None and cache_key is not None:
+        cache.set_json("decompose", cache_key, parsed.model_dump(mode="json"))
 
     return list(parsed.directions[:_MAX_DIRECTIONS])
