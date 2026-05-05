@@ -132,6 +132,19 @@ snippet-pasteable usage for HF `datasets`, pandas, and raw JSONL.
    with deterministic reassembly: same recipe + same seed → same
    fingerprint regardless of completion order.
 
+8. **`datascout judge` rescues weak labels with an LLM judge — under
+   audit.** Promote `proxy` / `remapped` / unknown rows to
+   `label_kind: judged` by asking one labeling question (an "axis").
+   Multi-judge agreement (single / majority-of-3 / unanimous-of-5),
+   explicit-gap promotion at a configurable threshold, sha256-keyed
+   disk cache so re-runs are free, per-batch checkpoint resumability,
+   and a `--calibrate-against` mode that reports P/R/F1 against a
+   gold corpus *before* the full pass — with an optional precision
+   floor that aborts the run if calibration is too low. Soft per-row
+   failures (API errors, content-filter rejections, parse retries)
+   are bucketed and the run continues. `datascout eval` scores any
+   judged corpus against any gold corpus.
+
 ---
 
 ## Use cases
@@ -163,8 +176,8 @@ snippet-pasteable usage for HF `datasets`, pandas, and raw JSONL.
   OpenAI + Entra setup (`az login`), HuggingFace tokens, every
   recognised env var.
 - **[CLI reference](docs/cli.md)** — every verb (`tour`, `decompose`,
-  `recon`, `inspect`, `curate`, `compose`, `cache`, `sources`),
-  every flag, with worked examples.
+  `recon`, `inspect`, `curate`, `judge`, `eval`, `compose`, `cache`,
+  `sources`), every flag, with worked examples.
 - **[Architecture](docs/architecture.md)** — pipeline diagram, source
   plugin contract, probe protocol, mode detection, milestone status.
 

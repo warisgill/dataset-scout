@@ -21,6 +21,8 @@ section of [architecture.md](architecture.md)).
 | [`recon`](#recon) | Full pipeline → `report.md` + `results.json` + `recipe.draft.yaml` + `decomposition.yaml` | ~2 min, ~16 LLM calls |
 | [`inspect`](#inspect) | One-candidate deep-dive | ~5s + optional 1 LLM call |
 | [`curate`](#curate) | Recipe → JSONL + lockfile | depends on row count |
+| [`judge`](#judge) | Promote weak labels to high-confidence ones with an LLM judge (M10) | 1 LLM call per non-ground-truth row × `--judges` |
+| [`eval`](#eval) | Score a judged corpus against gold (P/R/F1, confusion, coverage) | local |
 | [`compose`](#compose) | Merge multiple recipes into one | none — local |
 | [`cache`](#cache) | Inspect / prune / clear the cache | M1b — not yet implemented |
 | [`sources`](#sources) | List / toggle source plugins | local |
@@ -239,6 +241,114 @@ MinHash params (`num_perm`, `threshold`, `shingle_size`,
 an "audit-ready" banner with cluster stats and a "Components
 skipped due to upstream errors" section so the corpus's
 provenance is visible at a glance.
+
+---
+
+---
+
+## `judge`
+
+Promote weak labels to high-confidence ones by asking an LLM judge a
+single labeling question (the "axis"). The judge does not score the
+output of any downstream system — it labels rows of an existing
+corpus. Reference: `M10-judge-design.md`.
+
+```bash
+datascout judge ./mycorpus --axis psych_harm \
+    --rubric rubrics/psych_harm.txt --judges 3 --agreement majority \
+    --threshold 0.8 --calibrate-against ./gold-psych-harm
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `TARGET` | required | Corpus directory (containing `train.jsonl`/`val.jsonl`/`test.jsonl`) or a single `.jsonl` file produced by `datascout curate`. |
+| `--axis TEXT` | required | The labeling question, e.g. `psych_harm`, `prompt_attack`, `over_refusal`. |
+| `--rubric PATH` | — | Optional rubric file (free text or YAML). When omitted, a minimal "apply the axis name strictly" placeholder is used. |
+| `--judges INT` | `1` | Number of independent judge calls per row. Cached per-judge so re-runs are free. |
+| `--agreement {single,majority,unanimous}` | `single` | Multi-judge aggregation rule. `majority` requires `--judges 3`; `unanimous` requires `--judges 5`. |
+| `--threshold FLOAT` | `0.8` | Minimum derived `label_confidence` to promote a verdict to `label_kind: judged`. Below threshold, the row keeps its label and the `judge` block is attached for review. |
+| `--out PATH` | `<TARGET>/judged/` | Output directory. The original corpus is never overwritten. |
+| `--only-unknown / --re-judge-all` | `--only-unknown` | Skip rows already at `label_kind=ground_truth` or `label_kind=judged` (default), or judge every row. |
+| `--dry-run` | `False` | Estimate LLM call count without invoking the model. |
+| `--calibrate-against PATH` | — | Sample N rows from a gold corpus, run the judge under the same rubric/model/threshold, and report P/R/F1 against ground-truth labels. Recorded under `judge.calibration` in the lockfile. |
+| `--calibration-seed-n INT` | `100` | Sample size for `--calibrate-against`. |
+| `--calibration-floor FLOAT` | — | Required minimum calibrated precision. With this set, the run aborts if calibration falls below the floor unless `--proceed`. |
+| `--proceed` | `False` | Override `--calibration-floor`. |
+
+### Outputs
+
+Inside `<out>/`:
+
+- `train.jsonl` / `val.jsonl` / `test.jsonl` — same shape as the
+  input, with promoted rows updated and `judge` blocks attached on
+  every row that the judge saw (including below-threshold ones).
+- `judge.lock.yaml` — full audit trail: axis, rubric, model,
+  scout-internal `template_version`, `n_judges`, `agreement`,
+  threshold, cache_dir, calibration block, stats.
+- `judge.report.md` — short rich markdown summary.
+- `.judge_state.json` — per-batch checkpoint keyed by
+  `NormalizedRecord.stable_id`. Re-runs with the same `--out`
+  resume; the disk cache (`<workspace>/.cache/dataset-scout/judge/`)
+  makes already-judged rows free even without the checkpoint.
+
+### Worked example
+
+```bash
+datascout judge ./psych-harm-corpus \
+    --axis psych_harm \
+    --rubric rubrics/psych_harm.txt \
+    --judges 1 --threshold 0.8 \
+    --out ./psych-harm-judged
+
+# → ✓ datascout judge — 142 promoted positive · 803 promoted negative
+#    · 352 left unknown · 0 skipped · 0 cache hits · 9.42s
+```
+
+Soft per-row failures (API errors, JSON parse failures with one
+retry, AOAI content-filter rejections, cache corruption) **do not
+abort the run**. Each is bucketed in `JudgeStats` and written into
+`judge.lock.yaml → judge.stats` so the audit trail is complete.
+
+---
+
+## `eval`
+
+Score a corpus against a gold corpus. Generic — works on any pair of
+scout-shaped JSONL corpora joined on `stable_id`; the M10 calibration
+loop uses it internally.
+
+```bash
+datascout eval ./psych-harm-judged --against ./gold-psych-harm \
+    --axis psych_harm
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `JUDGED` | required | Judged-or-any-label corpus directory or `.jsonl` file. |
+| `--against PATH` | required | Gold corpus (rows with `label_kind=ground_truth`). |
+| `--axis TEXT` | — | Restrict scoring to a single axis. |
+
+Output is a per-axis table:
+
+```
+              axis     P     R    F1   cov  TP  FP  FN  TN  n_gold  n_judged
+       psych_harm  0.91  0.78  0.84  0.95  39   4  11  46     100        145
+```
+
+Only rows in the judged corpus with `label_kind=judged` contribute to
+P/R; un-promoted rows count toward `n_judged_unknown` (visible in the
+JSON dump of `EvalResult`) but not toward the confusion matrix —
+they're "no decision", not wrong.
+
+### Worked example
+
+```bash
+# Compare two judge models on the same gold set
+datascout judge ./corpus --axis x --out ./judged-A --model azure-openai/gpt-4o
+datascout judge ./corpus --axis x --out ./judged-B --model azure-openai/gpt-4o-mini
+datascout eval ./judged-A --against ./gold --axis x   # → P/R/F1 for A
+datascout eval ./judged-B --against ./gold --axis x   # → P/R/F1 for B
+```
 
 ---
 

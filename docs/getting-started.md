@@ -437,7 +437,52 @@ datascout curate --from programs/merged-recipe.yaml --out programs/corpus/
 
 ---
 
-## 11. Honest limits
+## 11. Rescue weak labels with the judge (`datascout judge`)
+
+Recon's `signal_proxy` strategy is honest about being a proxy — but
+sometimes a corpus has plenty of rows and the question is *which of
+the proxy-labeled rows are actually the thing*. That's what M10's
+LLM-as-judge is for: ask one labeling question (an "axis"), get a
+strict JSON verdict per row, promote only rows the judge is confident
+about (`label_confidence ≥ 0.8` by default).
+
+```bash
+# Optional: write a short rubric describing the axis. Free-form text
+# works fine for v1.
+cat > rubrics/psych_harm.txt <<'RUBRIC'
+Score the row 'positive' if it depicts or solicits help with
+first-person psychological self-harm or suicidal ideation.
+Score it 'negative' for ordinary emotion talk, third-person
+reportage, or fiction. Score it 'ambiguous' only when the
+directionality is genuinely unclear.
+RUBRIC
+
+# Calibrate first if you have a small gold set — same rubric, real
+# precision/recall numbers before you pay for the full pass.
+datascout judge ./mycorpus \
+    --axis psych_harm --rubric rubrics/psych_harm.txt \
+    --calibrate-against ./gold-psych-harm \
+    --calibration-floor 0.8 \
+    --threshold 0.8
+
+# Score the judged corpus against gold any time.
+datascout eval ./mycorpus/judged --against ./gold-psych-harm \
+    --axis psych_harm
+```
+
+The judge **does not overwrite** your input corpus. It writes the
+promoted rows to `<TARGET>/judged/` (override with `--out`), plus
+`judge.lock.yaml` (full audit trail — model, scout-internal
+`template_version`, `n_judges`, `agreement`, threshold, calibration
+metrics) and `judge.report.md`. Re-runs are nearly free: every
+verdict is sha256-cached under `<workspace>/.cache/dataset-scout/judge/`,
+and the per-batch `.judge_state.json` checkpoint lets a partial run
+resume on the next invocation. See
+[CLI reference → judge](cli.md#judge) for the full option set.
+
+---
+
+## 12. Honest limits
 
 - **Strategy assessment is LLM-judgment**, not ground truth. Read
   the rationale and inspect samples before committing.
@@ -453,6 +498,11 @@ datascout curate --from programs/merged-recipe.yaml --out programs/corpus/
 - **`curate` is audit-ready.** MinHash dedup, leakage-aware splits,
   filter DSL — all on by default. The lockfile records every
   parameter. Read the report; trust but verify.
+- **Judge verdicts are LLM-generated too.** The promotion rule is
+  conservative (explicit-gap, threshold ≥ 0.8 by default), and
+  `--calibrate-against` lets you measure precision against a real
+  gold set before paying for the full pass — but a judged label is
+  only as good as the rubric you wrote.
 - **Not legal advice.** License signals are an SPDX best-effort
   guess; read the upstream card before redistributing.
 

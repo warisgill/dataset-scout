@@ -157,9 +157,43 @@ The output JSONL (M4) marks every row with one of:
 | `subset_extracted` | ✅ | ✅ (within the documented subset) |
 | `remapped` | ✅ | ✅ *if you accept the remapped definition* |
 | `proxy` | ✅ (often weighted) | ❌ — exclude proxies from eval |
+| `judged` | ✅ | ✅ *if* `label_confidence ≥ your bar* |
 
 This is the load-bearing field for downstream training. Downstream
 tools should filter to `label_kind != "proxy"` for evaluation.
+
+### `judged` (M10) — explicit-gap label rescue
+
+`datascout judge` (M10) can promote rows from `proxy` /
+`remapped` / unknown to `judged` by asking an LLM judge a single
+labeling question (the "axis"). The promotion rule is **explicit
+gaps over low-confidence guesses**:
+
+- A row is rewritten with `label_kind: judged` only when the judge
+  returned a clean `positive` / `negative` verdict at-or-above the
+  configured `--threshold` (default `0.8`) on the *derived*
+  `label_confidence`.
+- For multi-judge runs (`--judges 3 --agreement majority` or
+  `--judges 5 --agreement unanimous`), the derived `label_confidence`
+  blends judge agreement with the agreeing judges' mean self-rated
+  confidence; the formula is recorded in
+  `M10-judge-design.md` §5 and the chosen `agreement` mode is
+  written into the lockfile so the derivation is reproducible.
+- Below threshold or on `ambiguous`, the row keeps its original
+  label and `label_kind`, but the `judge` block is still attached so
+  reviewers can see *why* promotion was declined. No silent
+  downgrades.
+
+Every judged row carries two fields beyond the schema baseline:
+
+- `label_confidence: float | None` — derived row-level confidence.
+- `judge: JudgeBlock | None` — verdict, subcategory, rationale, and
+  full provenance (model, scout-internal `template_version`,
+  `n_judges`, `agreement`).
+
+Downstream filters use the first one only; the `judge` block is for
+audit, not gating. See `docs/judged-corpus-shape.md` for the wire
+contract.
 
 ---
 
