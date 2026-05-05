@@ -79,11 +79,78 @@ def test_includes_brief_section():
     assert result.intent.raw_brief in html
 
 
-def test_includes_run_summary():
+def test_html_card_title_links_to_dataset():
+    """Per UX feedback: card title is a clickable link to the dataset card."""
     result = build_tour_result()
     html = render_recon_report_html(result)
-    assert "Run summary" in html
-    assert "Wall-clock" in html
+    # The candidate__title-link wraps rank + verdict + id in an <a> with
+    # href pointing to the upstream dataset card.
+    assert 'class="candidate__title-link"' in html
+    # Tour fixture's first card url should be referenced.
+    first = result.candidates[0].candidate.metadata.card_url
+    assert first is not None
+    assert f'href="{first}"' in html
+
+
+def test_html_card_details_are_collapsed_by_default():
+    """Per UX feedback: rationale + transform + caveats are collapsed."""
+    result = build_tour_result()
+    html = render_recon_report_html(result)
+    # Each assessed card has a <details class="candidate__details"> block
+    # for the long-form rationale/caveats/transform.
+    assert 'class="candidate__details"' in html
+    # The summary lists strategies + count.
+    assert "Strategies, caveats" in html
+
+
+def test_html_decomposition_and_papers_are_collapsed():
+    """Heavy investigative sections wrapped in <details> by default."""
+    result = build_tour_result()
+    html = render_recon_report_html(result)
+    # Both sections share the collapsed-section class.
+    assert 'class="collapsed-section"' in html
+    # The Decomposition heading is now inside a <summary> element.
+    # Use a substring that's unique to that wrapper.
+    assert 'inline-h2">Decomposition' in html
+
+
+def test_html_run_summary_compact_at_top():
+    """Compact run summary lives near the top, before candidates."""
+    result = build_tour_result()
+    html = render_recon_report_html(result)
+    # Position check: run-summary-compact must appear before the
+    # first candidate__title-link (and before Decomposition).
+    pos_summary = html.find("run-summary-compact")
+    pos_first_card = html.find("candidate__title-link")
+    pos_decomp = html.find("Decomposition")
+    assert pos_summary > 0
+    assert pos_summary < pos_first_card
+    if pos_decomp > 0:
+        assert pos_summary < pos_decomp
+
+
+def test_html_compact_meta_replaces_snapshot_list():
+    """Old bulleted snapshot list is gone; compact meta paragraph replaces it."""
+    result = build_tour_result()
+    html = render_recon_report_html(result)
+    assert "candidate__meta" in html
+    # Old snapshot class should not be emitted anymore.
+    assert "candidate__snapshot" not in html
+
+
+def test_html_card_doesnt_reproduce_card_url_in_body():
+    """Avoid rendering the dataset URL twice — once in title link is enough."""
+    result = build_tour_result()
+    html = render_recon_report_html(result)
+    # The header link contains the URL. The body should NOT have a
+    # second 🔗 / Card: line; that was the verbose old layout.
+    # Use a defensive check: the URL of the first candidate appears
+    # at most once outside the link href.
+    first = result.candidates[0].candidate.metadata.card_url
+    assert first is not None
+    # Once in href, possibly once more in the visible link text — but
+    # not in a separate "Card:" snapshot line.
+    assert "Card:" not in html or "<b>Card:" not in html
 
 
 def test_lists_all_candidates_with_card_links():

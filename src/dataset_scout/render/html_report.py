@@ -41,28 +41,46 @@ def write_recon_report_html(result: ReconResult, out_dir: Path) -> Path:
 
 
 def render_recon_report_html(result: ReconResult) -> str:
-    """Render a ReconResult to a self-contained HTML string."""
+    """Render a ReconResult to a self-contained HTML string.
+
+    Section order is tuned for fast scanning by a reader who hasn't
+    seen the report before. Top: what happened. Middle: where the
+    data is and what to do with it. Bottom: investigative material
+    (decomposition, papers) collapsed in <details> blocks.
+
+      1. h1 + mode callout
+      2. Brief
+      3. Compact run summary (one-line counts)
+      4. Sourcing roadmap / coverage gaps  ← first actionable content
+      5. At-a-glance scoreboard
+      6. Grouped candidates (simplified cards w/ <details> for the
+         long-form rationale)
+      7. Decomposition (collapsed)
+      8. Related papers (collapsed)
+      9. Recipe preview / next steps
+     10. Footer disclaimer
+    """
     ctx = ReconReportContext.from_result(result)
     buf = StringIO()
     _write_doc_head(buf, result.intent.raw_brief)
     buf.write('<body>\n<main class="container">\n')
     _write_header(buf, ctx)
     _write_brief_section(buf, result)
+    _write_run_summary_compact(buf, result, ctx)
     if ctx.show_gaps_lead and result.coverage:
         _write_gaps_section(buf, result, lead=True)
+    elif result.coverage and result.coverage.semantic_gaps:
+        _write_gaps_section(buf, result, lead=False)
     if ctx.has_strategies:
         _write_at_a_glance(buf, ctx)
     if result.candidates:
         _write_candidates_section(buf, result, ctx)
     if ctx.has_decomposition and result.coverage:
         _write_decomposition_section(buf, result)
-    if result.coverage and result.coverage.semantic_gaps and not ctx.show_gaps_lead:
-        _write_gaps_section(buf, result, lead=False)
     if ctx.show_papers:
         _write_papers_section(buf, result, ctx)
     if ctx.show_recipe_preview:
         _write_recipe_preview(buf, ctx)
-    _write_run_summary(buf, result, ctx)
     _write_footer(buf)
     buf.write("</main>\n</body>\n</html>\n")
     return buf.getvalue()
@@ -150,6 +168,52 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .callout--proxy { border-left-color: var(--proxy); }
 .callout strong { display: block; margin-bottom: 0.25em; }
 .muted { color: var(--fg-muted); }
+.small { font-size: 0.88em; }
+
+/* ─── Compact run summary at top ──────────────────────────────── */
+.run-summary-compact {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline;
+  padding: 10px 14px;
+  background: var(--bg-muted);
+  border-radius: 6px;
+  margin: 0.6em 0;
+  font-size: 0.95em;
+}
+.run-summary-compact b { font-weight: 600; color: var(--fg); }
+.notices-details { margin: 6px 0 1em; font-size: 0.92em; }
+.notices-details summary { cursor: pointer; }
+.notices-details ul { margin: 6px 0 0; padding-left: 22px; }
+
+/* ─── Collapsed sections (Decomposition + Papers) ─────────────── */
+.collapsed-section {
+  margin: 1.5em 0;
+  border-left: 3px solid var(--border);
+  padding-left: 14px;
+}
+.collapsed-section[open] {
+  border-left-color: var(--accent);
+}
+.collapsed-section > summary {
+  cursor: pointer;
+  list-style: none;
+  /* Hide the default disclosure triangle, replace with our own ▸/▾ */
+}
+.collapsed-section > summary::-webkit-details-marker { display: none; }
+.collapsed-section > summary::before {
+  content: "▸  ";
+  display: inline-block;
+  color: var(--fg-muted);
+  font-size: 0.85em;
+  transition: transform 0.15s ease;
+}
+.collapsed-section[open] > summary::before { content: "▾  "; }
+.inline-h2 {
+  display: inline;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font-size: 1.4rem;
+}
 
 /* ─── At-a-glance scoreboard ──────────────────────────────────── */
 .scoreboard { margin: 1.5em 0; }
@@ -211,16 +275,38 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .candidate--unscored { border-left-color: var(--neutral); }
 
 .candidate__head {
-  display: flex; flex-wrap: wrap; gap: 6px 12px;
-  align-items: center; margin-bottom: 6px;
+  margin-bottom: 6px;
 }
-.candidate__rank { font-weight: 700; color: var(--fg-muted); font-size: 0.9em; }
+.candidate__title-link {
+  display: flex; flex-wrap: wrap; gap: 6px 12px;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+  padding: 4px 0;
+  border-radius: 4px;
+}
+.candidate__title-link:hover {
+  text-decoration: none;
+}
+.candidate__title-link:hover .candidate__id {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.candidate__title-link::after {
+  content: "↗";
+  color: var(--fg-muted);
+  font-size: 0.85em;
+  margin-left: 4px;
+  opacity: 0.6;
+}
+.candidate__rank { font-weight: 700; color: var(--fg-muted); font-size: 0.85em; min-width: 2.5em; }
 .candidate__verdict {
   font-weight: 600;
   padding: 2px 10px;
   border-radius: 4px;
   background: var(--bg-muted);
-  font-size: 0.9em;
+  font-size: 0.85em;
+  white-space: nowrap;
 }
 .candidate__verdict--direct_use { color: var(--good); background: color-mix(in srgb, var(--good) 12%, var(--bg)); }
 .candidate__verdict--subset_extraction,
@@ -229,24 +315,53 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .candidate__verdict--signal_proxy { color: var(--proxy); background: color-mix(in srgb, var(--proxy) 12%, var(--bg)); }
 .candidate__verdict--benign_baseline { color: var(--benign); background: color-mix(in srgb, var(--benign) 12%, var(--bg)); }
 .candidate__verdict--not_useful { color: var(--neutral); background: var(--bg-muted); opacity: 0.85; }
-.candidate__id { font-size: 0.92em; }
+.candidate__id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.95em;
+  color: var(--fg);
+}
 
-.candidate__lede { font-size: 1.02em; margin: 6px 0 8px; color: var(--fg); }
+.candidate__lede {
+  font-size: 1.02em;
+  margin: 6px 0 4px;
+  color: var(--fg);
+}
 .candidate__use-as {
   font-size: 0.95em;
-  background: var(--bg-muted);
-  padding: 6px 12px;
-  border-radius: 4px;
-  margin: 6px 0 10px;
+  margin: 4px 0;
+  color: var(--fg);
 }
 .candidate__use-as b { font-weight: 600; }
 
-.candidate__snapshot {
-  list-style: none; padding: 0; margin: 8px 0;
-  font-size: 0.92em;
+.candidate__meta {
+  font-size: 0.88em;
+  color: var(--fg-muted);
+  margin: 4px 0 0;
 }
-.candidate__snapshot li { margin: 3px 0; color: var(--fg); }
-.signals { color: var(--fg-muted); }
+
+.candidate__details {
+  margin-top: 10px;
+  font-size: 0.93em;
+}
+.candidate__details > summary {
+  cursor: pointer;
+  color: var(--fg-muted);
+  padding: 4px 0;
+  list-style: none;
+  user-select: none;
+}
+.candidate__details > summary::-webkit-details-marker { display: none; }
+.candidate__details > summary::before {
+  content: "▸ ";
+  color: var(--fg-muted);
+}
+.candidate__details[open] > summary::before { content: "▾ "; }
+.candidate__details > summary:hover { color: var(--fg); }
+.candidate__desc {
+  font-size: 0.95em;
+  color: var(--fg);
+  margin: 6px 0;
+}
 
 /* Strategy detail (kept; same colour-stripe per kind) */
 .strategies { margin: 10px 0; }
@@ -448,9 +563,20 @@ def _write_gaps_section(buf: StringIO, result: ReconResult, *, lead: bool) -> No
 
 
 def _write_decomposition_section(buf: StringIO, result: ReconResult) -> None:
+    """Decomposition section, collapsed by default.
+
+    Important investigative material but not first-read content. Users
+    open it when they want to know which directions surfaced a given
+    candidate, or when iterating on the brief.
+    """
     if result.coverage is None:
         return
-    buf.write("<h2>Decomposition</h2>\n")
+    buf.write(
+        '<details class="collapsed-section">\n'
+        f'<summary><h2 class="inline-h2">Decomposition '
+        f'<span class="muted small">· {len(result.coverage.decomposition)} directions</span>'
+        "</h2></summary>\n"
+    )
     buf.write(
         "<p>The LLM proposed these search directions in addition to the original brief:</p>\n<ul>\n"
     )
@@ -465,7 +591,43 @@ def _write_decomposition_section(buf: StringIO, result: ReconResult) -> None:
                 f'<br><span class="muted">expected: {escape(d.expected_finds)}</span>'
             )
         buf.write("</li>\n")
-    buf.write("</ul>\n")
+    buf.write("</ul>\n</details>\n")
+
+
+def _write_run_summary_compact(
+    buf: StringIO, result: ReconResult, ctx: ReconReportContext
+) -> None:
+    """Compact one-line run summary at the top of the report.
+
+    Bubbles the headline numbers up so a reader knows in 2 seconds
+    what the run produced. The legacy full Run summary section is
+    expanded only if the reader expands the meta details footer below.
+    """
+    bits: list[str] = []
+    bits.append(f"<b>{ctx.n_candidates}</b> candidates")
+    if ctx.has_strategies:
+        bits.append(f"<b>{ctx.n_strategy_assessed}</b> assessed")
+    if ctx.n_directions:
+        bits.append(f"<b>{ctx.n_directions}</b> directions")
+    if ctx.n_papers:
+        bits.append(f"<b>{ctx.n_papers}</b> papers")
+    bits.append(f"{result.elapsed_seconds:.1f}s")
+    sources = ", ".join(result.sources_searched) or "(none)"
+    buf.write(
+        '<aside class="run-summary-compact">\n'
+        f"  <span>{' · '.join(bits)}</span>\n"
+        f'  <span class="muted small">via {escape(sources)}</span>\n'
+        "</aside>\n"
+    )
+    if result.notices:
+        buf.write(
+            '<details class="notices-details">\n'
+            f'<summary class="muted small">{len(result.notices)} '
+            f'notice{"s" if len(result.notices) != 1 else ""}</summary>\n<ul>\n'
+        )
+        for n in result.notices:
+            buf.write(f'<li class="notice">{escape(n)}</li>\n')
+        buf.write("</ul>\n</details>\n")
 
 
 def _write_run_summary(buf: StringIO, result: ReconResult, ctx: ReconReportContext) -> None:
@@ -564,11 +726,24 @@ def _write_candidate(
     *,
     verdict: CardVerdict | None,
 ) -> None:
-    """Render one candidate card.
+    """Render one candidate card — minimal, scannable.
 
-    When `verdict` is supplied (strategy-assessed), the header bubbles
-    up "Direct fit (strong, 0.85)" + a one-liner so users don't have
-    to read the rationale tree to decide.
+    Visible by default (the at-a-glance read):
+      - Header: clickable link to the dataset card. Wraps rank +
+        verdict pill + dataset id.
+      - Lede: one-liner pulled from the best strategy's rationale.
+      - Use-as: practical "what to do with it" guidance.
+      - Compact meta line: license · size · freshness · surfaced by.
+
+    Collapsed in <details> (the deep-dive read):
+      - Per-strategy rationale, caveats, and transform spec.
+      - Probe signals (cheap + label-intent-fit).
+      - Description, revision, requires-auth flag (low priority).
+
+    Per user feedback: "the most important takeaways should be summary
+    results... clean and direct representation of datasets... heading
+    clickable link to the dataset itself, then a summary analysis,
+    then the rest of the coverage analysis."
     """
     cand = sc.candidate
     md = cand.metadata
@@ -576,22 +751,32 @@ def _write_candidate(
     kind_class = verdict.primary_kind if verdict and verdict.primary_kind else "unscored"
     buf.write(f'<article class="candidate candidate--{kind_class}">\n')
 
-    # Header: index + verdict pill + dataset id
-    buf.write('<header class="candidate__head">\n')
+    # ─── Header: clickable, links to the dataset card ──────────
+    title_text = f"{escape(cand.source)}:{escape(cand.id)}"
+    head_inner_parts: list[str] = [
+        f'<span class="candidate__rank">#{index}</span>',
+    ]
     if verdict is not None:
-        buf.write(
-            f'<span class="candidate__rank">#{index}</span>'
+        head_inner_parts.append(
             f'<span class="candidate__verdict candidate__verdict--{kind_class}">'
             f"{escape(verdict.headline)}</span>"
-            f'<code class="candidate__id">{escape(cand.source)}:{escape(cand.id)}</code>'
+        )
+    head_inner_parts.append(f'<span class="candidate__id">{title_text}</span>')
+    head_inner = "".join(head_inner_parts)
+
+    if md.card_url:
+        # Whole header becomes the link — bigger click target than just
+        # the id text. external icon hint via CSS::after.
+        buf.write(
+            f'<header class="candidate__head">\n'
+            f'<a class="candidate__title-link" href="{escape(md.card_url)}" '
+            f'target="_blank" rel="noopener">{head_inner}</a>\n'
+            f"</header>\n"
         )
     else:
-        buf.write(
-            f'<span class="candidate__rank">#{index}</span>'
-            f'<code class="candidate__id">{escape(cand.source)}:{escape(cand.id)}</code>'
-        )
-    buf.write("</header>\n")
+        buf.write(f'<header class="candidate__head">{head_inner}</header>\n')
 
+    # ─── Summary analysis (always visible) ─────────────────────
     if verdict is not None and verdict.one_liner:
         buf.write(f'<p class="candidate__lede">{escape(verdict.one_liner)}</p>\n')
 
@@ -600,41 +785,45 @@ def _write_candidate(
             f'<p class="candidate__use-as"><b>Use as:</b> {escape(verdict.use_as)}</p>\n'
         )
 
-    # Snapshot block (description + plain-text signals + auth + provenance)
-    snapshot_items: list[str] = []
-    if md.description:
-        desc = md.description.strip().splitlines()[0][:240]
-        snapshot_items.append(f'📝 {escape(desc)}')
-    if md.card_url:
-        snapshot_items.append(
-            f'🔗 <a href="{escape(md.card_url)}">{escape(md.card_url)}</a>'
-        )
-    if cand.revision:
-        snapshot_items.append(f"📌 revision <code>{escape(cand.revision[:12])}</code>")
-    plain_signals = list(_render_plain_signals(sc))
-    if plain_signals:
-        snapshot_items.append(
-            "<span class=\"signals\">"
-            + " · ".join(escape(s) for s in plain_signals)
-            + "</span>"
-        )
-    if cand.requires_auth:
-        snapshot_items.append("🔒 gated — requires authentication")
+    # ─── Compact meta one-liner (always visible) ────────────────
+    # License · size · freshness · surfaced by — separated by middots,
+    # not a bulleted list. Less visual weight than the old snapshot
+    # block, gets the key facts in one scan.
+    meta_bits = list(_render_plain_signals(sc))
     if cand.surfaced_by:
-        snapshot_items.append(
-            f'🧭 surfaced by: {escape(", ".join(cand.surfaced_by))}'
+        meta_bits.append(f'surfaced by: {", ".join(cand.surfaced_by)}')
+    if cand.requires_auth:
+        meta_bits.append("🔒 gated")
+    if meta_bits:
+        buf.write(
+            '<p class="candidate__meta">'
+            + " · ".join(escape(b) for b in meta_bits)
+            + "</p>\n"
         )
 
-    if snapshot_items:
-        buf.write('<ul class="candidate__snapshot">\n')
-        for item in snapshot_items:
-            buf.write(f"<li>{item}</li>\n")
-        buf.write("</ul>\n")
-
-    if sc.strategies:
-        _write_strategies(buf, sc.strategies)
-
-    _write_probe_signals(buf, sc)
+    # ─── Collapsible deep-dive (rationale + caveats + probes) ───
+    has_details = bool(sc.strategies) or bool(sc.cheap_probes) or bool(md.description)
+    if has_details:
+        n_strats = len(sc.strategies)
+        summary_label = (
+            "Strategies, caveats & transform"
+            + (f" · {n_strats}" if n_strats else "")
+        )
+        buf.write(
+            '<details class="candidate__details">\n'
+            f'<summary>{summary_label}</summary>\n'
+        )
+        if md.description:
+            desc = md.description.strip().splitlines()[0][:300]
+            buf.write(f'<p class="candidate__desc">{escape(desc)}</p>\n')
+        if cand.revision:
+            buf.write(
+                f'<p class="muted small">revision <code>{escape(cand.revision[:12])}</code></p>\n'
+            )
+        if sc.strategies:
+            _write_strategies(buf, sc.strategies)
+        _write_probe_signals(buf, sc)
+        buf.write("</details>\n")
 
     buf.write("</article>\n")
 
@@ -898,27 +1087,27 @@ def _write_footer(buf: StringIO) -> None:
 def _write_papers_section(
     buf: StringIO, result: ReconResult, ctx: ReconReportContext
 ) -> None:
-    """Render the academic-paper discovery section.
+    """Render the academic-paper discovery section, collapsed by default.
 
-    Mirrors the Markdown renderer's structure but with semantic HTML
-    (article + dl) and color-coded venue / dataset-citation badges so
-    a reviewer can scan the section without reading every paragraph.
+    Important investigative material — papers often cite datasets the
+    HF channel missed — but not first-read content. Wrap in <details>
+    so it doesn't add scroll-weight to a 100-card report.
     """
-    buf.write("<h2>Related papers</h2>\n")
     citations = ctx.n_paper_dataset_citations
-    if citations > 0:
-        buf.write(
-            f"<p>{ctx.n_papers} paper(s) from NeurIPS / ICML / ICLR / SaTML "
-            f"with <b>{citations} dataset citation(s)</b> extracted from abstracts.</p>\n"
-        )
-    else:
-        buf.write(
-            f"<p>{ctx.n_papers} paper(s) from NeurIPS / ICML / ICLR / SaTML. "
-            "No dataset URLs found in abstracts — read the paper to find "
-            "the dataset directly.</p>\n"
-        )
+    citation_label = (
+        f" · {citations} dataset citation(s) extracted"
+        if citations > 0
+        else " · no dataset URLs in abstracts"
+    )
+    buf.write(
+        '<details class="collapsed-section">\n'
+        f'<summary><h2 class="inline-h2">Related papers '
+        f'<span class="muted small">· {ctx.n_papers}{citation_label}</span>'
+        "</h2></summary>\n"
+    )
     for p in result.papers:
         _write_paper(buf, p)
+    buf.write("</details>\n")
 
 
 def _write_paper(buf: StringIO, p: PaperReference) -> None:
