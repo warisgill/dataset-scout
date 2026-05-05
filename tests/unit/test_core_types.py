@@ -16,6 +16,7 @@ from dataset_scout import (
     Intent,
     LabelKind,
     LicensePolicy,
+    NormalizedRecord,
     Scorecard,
     SensitiveDomain,
     Strategy,
@@ -137,6 +138,49 @@ def test_label_kind_values():
         "proxy",
         "subset_extracted",
     }
+
+
+def _normalized_record(
+    *,
+    source: str = "huggingface:org/ds",
+    source_row_id: str = "abc123",
+    source_config: str | None = "default",
+    source_split: str | None = "train",
+) -> NormalizedRecord:
+    return NormalizedRecord(
+        text="hello",
+        label="benign",
+        label_kind=LabelKind.GROUND_TRUTH,
+        strategy=StrategyKind.DIRECT_USE,
+        strategy_confidence=0.9,
+        source=source,
+        source_row_id=source_row_id,
+        source_config=source_config,
+        source_split=source_split,
+    )
+
+
+def test_normalized_record_stable_id_canonical_form():
+    rec = _normalized_record()
+    assert rec.stable_id == "huggingface:org/ds::default::train::abc123"
+
+
+def test_normalized_record_stable_id_uses_placeholder_for_missing_config_split():
+    rec = _normalized_record(source_config=None, source_split=None)
+    assert rec.stable_id == "huggingface:org/ds::_::_::abc123"
+
+
+def test_normalized_record_stable_id_is_deterministic():
+    a = _normalized_record()
+    b = _normalized_record()
+    assert a.stable_id == b.stable_id
+
+
+def test_normalized_record_stable_id_distinguishes_split_or_config():
+    base = _normalized_record()
+    other_split = _normalized_record(source_split="test")
+    other_config = _normalized_record(source_config="zh")
+    assert len({base.stable_id, other_split.stable_id, other_config.stable_id}) == 3
 
 
 def test_strategy_taxonomy_has_eight_kinds():

@@ -362,6 +362,29 @@ class NormalizedRecord(BaseModel):
     extras: dict[str, Any] = Field(default_factory=dict)
     extras_coercion: bool = False
 
+    @property
+    def stable_id(self) -> str:
+        """Globally-unique, deterministic row identifier.
+
+        Canonical concatenation of the four provenance fields scout
+        already records: ``<source>::<config>::<split>::<source_row_id>``.
+        ``config`` and ``split`` use the placeholder ``_`` when ``None``
+        so the form is total; ``source_row_id`` is already deterministic
+        per :func:`dataset_scout.curate._row_id`.
+
+        Stable across runs given the same source revision. Used by
+        downstream verbs (judge resumability, lineage, dedup keys) that
+        need a corpus-global handle for a row without introducing a new
+        stored field. M9-min slice; the lineage DAG (M9-full) layers on
+        top of this without changing the format.
+        """
+        return (
+            f"{self.source}::"
+            f"{self.source_config or '_'}::"
+            f"{self.source_split or '_'}::"
+            f"{self.source_row_id}"
+        )
+
 
 # ─── Inspect result (M3 — single-candidate deep-dive) ────────────────
 
