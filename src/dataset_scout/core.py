@@ -250,6 +250,7 @@ class LabelKind(StrEnum):
     REMAPPED = "remapped"
     PROXY = "proxy"
     SUBSET_EXTRACTED = "subset_extracted"
+    JUDGED = "judged"
 
 
 class TransformSpec(BaseModel):
@@ -325,6 +326,38 @@ class CoverageReport(BaseModel):
 # ─── Normalized record (curate output schema) ────────────────────────
 
 
+class JudgeBlock(BaseModel):
+    """LLM-as-judge verdict attached to a row when ``label_kind`` is ``judged``.
+
+    Populated by the M10 ``datascout judge`` verb. Each judged row records
+    the axis question that was asked, the verdict trio, the judge's
+    self-rated confidence, and provenance (model + prompt-template version)
+    so the audit trail in the lockfile is reproducible. ``n_judges`` and
+    ``agreement`` are populated only when multi-judge mode was used; for
+    single-judge runs ``n_judges = 1`` and ``agreement`` is ``None``.
+
+    The ``confidence`` field here is the *raw* judge self-rated value;
+    the *derived* confidence used by downstream filters is recorded as
+    :attr:`NormalizedRecord.label_confidence` (for multi-judge runs the
+    derived value blends agreement and self-confidence per the rule
+    documented in the M10 design doc).
+
+    Reference: ``M10-judge-design.md`` §4.2.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    axis: str
+    verdict: Literal["positive", "negative", "ambiguous"]
+    subcategory: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    rationale: str
+    model: str
+    template_version: str
+    n_judges: int = Field(default=1, ge=1)
+    agreement: Literal["single", "majority", "unanimous"] | None = None
+
+
 class NormalizedRecord(BaseModel):
     """One row of the materialised corpus.
 
@@ -361,6 +394,12 @@ class NormalizedRecord(BaseModel):
     # Original row, JSON-coerced if necessary.
     extras: dict[str, Any] = Field(default_factory=dict)
     extras_coercion: bool = False
+
+    # M10 — judge labeling. Both fields are ``None`` for non-judged
+    # rows; populated together when ``label_kind == LabelKind.JUDGED``.
+    # Additive only: existing corpora load unchanged.
+    label_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    judge: JudgeBlock | None = None
 
     @property
     def stable_id(self) -> str:

@@ -14,6 +14,7 @@ from dataset_scout import (
     DecompositionDirection,
     Evidence,
     Intent,
+    JudgeBlock,
     LabelKind,
     LicensePolicy,
     NormalizedRecord,
@@ -137,7 +138,139 @@ def test_label_kind_values():
         "remapped",
         "proxy",
         "subset_extracted",
+        "judged",
     }
+
+
+# ─── JudgeBlock + judge fields on NormalizedRecord (M10) ────────────
+
+
+def _judge_block(**overrides) -> JudgeBlock:
+    base = dict(
+        axis="prompt_attack",
+        verdict="positive",
+        subcategory="injection-system-prompt-extract",
+        confidence=0.92,
+        rationale="Clear attempt to extract the system prompt.",
+        model="azure-openai/gpt-4o-2024-08",
+        template_version="v1",
+        n_judges=1,
+        agreement=None,
+    )
+    base.update(overrides)
+    return JudgeBlock(**base)
+
+
+def test_judge_block_minimal_construction():
+    j = _judge_block()
+    assert j.verdict == "positive"
+    assert j.n_judges == 1
+    assert j.agreement is None
+
+
+def test_judge_block_rejects_unknown_verdict():
+    with pytest.raises(ValidationError):
+        _judge_block(verdict="maybe")
+
+
+def test_judge_block_rejects_out_of_range_confidence():
+    with pytest.raises(ValidationError):
+        _judge_block(confidence=1.5)
+
+
+def test_judge_block_multi_judge_majority():
+    j = _judge_block(n_judges=3, agreement="majority")
+    assert j.n_judges == 3
+    assert j.agreement == "majority"
+
+
+def test_judge_block_rejects_unknown_agreement():
+    with pytest.raises(ValidationError):
+        _judge_block(agreement="plurality")
+
+
+def test_judge_block_is_frozen():
+    j = _judge_block()
+    with pytest.raises(ValidationError):
+        j.verdict = "negative"  # type: ignore[misc]
+
+
+def test_normalized_record_judge_fields_default_none():
+    rec = _normalized_record()
+    assert rec.label_confidence is None
+    assert rec.judge is None
+
+
+def test_normalized_record_with_judged_label():
+    rec = NormalizedRecord(
+        text="hello",
+        label="positive",
+        label_kind=LabelKind.JUDGED,
+        strategy=StrategyKind.DIRECT_USE,
+        strategy_confidence=0.9,
+        source="huggingface:org/ds",
+        source_row_id="abc123",
+        source_config="default",
+        source_split="train",
+        label_confidence=0.91,
+        judge=_judge_block(),
+    )
+    assert rec.label_kind is LabelKind.JUDGED
+    assert rec.label_confidence == 0.91
+    assert rec.judge is not None
+    assert rec.judge.axis == "prompt_attack"
+
+
+def test_normalized_record_label_confidence_out_of_range():
+    with pytest.raises(ValidationError):
+        NormalizedRecord(
+            text="hello",
+            label="benign",
+            label_kind=LabelKind.GROUND_TRUTH,
+            strategy=StrategyKind.DIRECT_USE,
+            strategy_confidence=0.9,
+            source="huggingface:org/ds",
+            source_row_id="abc123",
+            label_confidence=1.5,
+        )
+
+
+def test_normalized_record_round_trip_with_judge():
+    rec = NormalizedRecord(
+        text="hello",
+        label="positive",
+        label_kind=LabelKind.JUDGED,
+        strategy=StrategyKind.DIRECT_USE,
+        strategy_confidence=0.9,
+        source="huggingface:org/ds",
+        source_row_id="abc123",
+        source_config="default",
+        source_split="train",
+        label_confidence=0.91,
+        judge=_judge_block(),
+    )
+    dumped = rec.model_dump_json()
+    parsed = NormalizedRecord.model_validate_json(dumped)
+    assert parsed == rec
+
+
+def test_normalized_record_existing_corpora_load_unchanged():
+    """Additive-only invariant: a record without label_confidence/judge
+    keys (i.e. an existing pre-M10 row) parses cleanly."""
+    payload = {
+        "text": "hello",
+        "label": "benign",
+        "label_kind": "ground_truth",
+        "strategy": "direct_use",
+        "strategy_confidence": 0.9,
+        "source": "huggingface:org/ds",
+        "source_row_id": "abc123",
+        "source_config": "default",
+        "source_split": "train",
+    }
+    rec = NormalizedRecord.model_validate(payload)
+    assert rec.label_confidence is None
+    assert rec.judge is None
 
 
 def _normalized_record(
