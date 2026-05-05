@@ -7,14 +7,34 @@ milestones light up real work behind each.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-from typing import Annotated
+# ─── early environment hygiene ─────────────────────────────────────
+# Set BEFORE any huggingface_hub / datasets import (which happens lazily
+# inside command implementations). These are quality-of-life muting of
+# warnings that don't carry actionable signal in our use-case:
+#   * HF symlink-unsupported warning is harmless; on Windows it's emitted
+#     once per dataset cache, flooding logs.
+#   * HF telemetry is opt-out by policy here — no need to advertise.
+#   * The HF "unauthenticated requests" warning is real signal but already
+#     surfaced at the report layer; muting the per-call repetition.
+# Users who want the warnings back can set the env vars to "0" explicitly
+# (we use setdefault so we never override).
+import os
+import warnings
 
-import typer
-from rich.console import Console
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+warnings.filterwarnings("ignore", message=r".*unauthenticated requests.*")
+warnings.filterwarnings("ignore", message=r".*HF_TOKEN.*")
+warnings.filterwarnings("ignore", message=r".*Repo card metadata block was not found.*")
 
-from dataset_scout import __version__
+import sys  # noqa: E402  (intentional: env setdefault above must happen first)
+from pathlib import Path  # noqa: E402
+from typing import Annotated  # noqa: E402
+
+import typer  # noqa: E402
+from rich.console import Console  # noqa: E402
+
+from dataset_scout import __version__  # noqa: E402
 
 app = typer.Typer(
     name="dataset-scout",
@@ -465,16 +485,25 @@ def curate(
         err.print(f"[red]error:[/red] {e}")
         raise typer.Exit(code=1) from e
 
+    materialised_with_rows = result.components_kept - result.components_zero_row
+    total_components = result.components_kept + result.components_skipped + result.components_failed
     err.print(
         f"[green]✔[/green] {result.total_rows} row(s) written to {result.out_dir} "
-        f"({result.components_kept} component(s) kept, "
-        f"{result.components_skipped} skipped"
+        f"({materialised_with_rows} of {total_components} component(s) materialised with rows"
+        + (f", {result.components_zero_row} produced 0 rows" if result.components_zero_row else "")
+        + (f", {result.components_skipped} dropped" if result.components_skipped else "")
         + (f", {result.components_failed} failed" if result.components_failed else "")
         + f") in {result.elapsed_seconds:.2f}s"
     )
     splits_str = " · ".join(f"{n}={c}" for n, c in result.rows_per_split.items())
     err.print(f"  - splits: {splits_str}")
     err.print(f"  - fingerprint: {result.fingerprint[:16]}...")
+    if result.components_zero_row:
+        err.print(
+            f"  [yellow]![/yellow] {result.components_zero_row} component(s) "
+            "materialised but produced 0 rows — usually a recipe column "
+            "mismatch. See report.md → Components for the per-component count."
+        )
     if result.failures:
         err.print(
             f"  [yellow]![/yellow] {len(result.failures)} component(s) skipped "

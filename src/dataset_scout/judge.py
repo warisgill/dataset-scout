@@ -751,6 +751,90 @@ def _write_judge_lockfile(
     )
 
 
+def _sample_judged_rows(files: list[Path], *, top_n: int = 3) -> dict[str, list[dict[str, Any]]]:
+    """Bucket and sample judged rows for the report.
+
+    Returns a dict with three keys: ``promoted_positive``, ``promoted_negative``,
+    and ``ambiguous``. Each list holds the top-``top_n`` highest-confidence
+    rows in that bucket, with ``text`` truncated for display. Reads only
+    files that exist (some splits may be empty).
+    """
+    promoted_pos: list[dict[str, Any]] = []
+    promoted_neg: list[dict[str, Any]] = []
+    ambiguous: list[dict[str, Any]] = []
+    for path in files:
+        if not path.exists():
+            continue
+        with path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                judge = row.get("judge")
+                if not isinstance(judge, dict):
+                    continue
+                verdict = judge.get("verdict")
+                conf = float(judge.get("confidence") or 0.0)
+                bucket: list[dict[str, Any]] | None
+                if row.get("label_kind") == "judged" and verdict == "positive":
+                    bucket = promoted_pos
+                elif row.get("label_kind") == "judged" and verdict == "negative":
+                    bucket = promoted_neg
+                elif verdict == "ambiguous":
+                    bucket = ambiguous
+                else:
+                    bucket = None
+                if bucket is None:
+                    continue
+                bucket.append(
+                    {
+                        "confidence": conf,
+                        "subcategory": judge.get("subcategory") or "",
+                        "rationale": judge.get("rationale") or "",
+                        "source": row.get("source") or "",
+                        "stable_id": (
+                            f"{row.get('source', '')}::"
+                            f"{row.get('source_config') or '_'}::"
+                            f"{row.get('source_split') or '_'}::"
+                            f"{row.get('source_row_id', '')}"
+                        ),
+                        "text": row.get("text") or "",
+                    }
+                )
+    for bucket in (promoted_pos, promoted_neg, ambiguous):
+        bucket.sort(key=lambda r: r["confidence"], reverse=True)
+        del bucket[top_n:]
+    return {
+        "promoted_positive": promoted_pos,
+        "promoted_negative": promoted_neg,
+        "ambiguous": ambiguous,
+    }
+
+
+def _format_sample_section(title: str, rows: list[dict[str, Any]]) -> list[str]:
+    if not rows:
+        return [f"### {title}", "", "_(none)_", ""]
+    out: list[str] = [f"### {title}", ""]
+    for r in rows:
+        text = r["text"]
+        if len(text) > 240:
+            text = text[:237] + "..."
+        text = text.replace("\n", " ").replace("\r", " ")
+        out += [
+            f"- **conf {r['confidence']:.2f}** · `{r['subcategory']}`",
+            f"  - source: `{r['source']}`",
+            f"  - stable_id: `{r['stable_id']}`",
+            f"  - rationale: {r['rationale']}",
+            f"  - text: > {text}",
+            "",
+        ]
+    return out
+
+
 def _write_judge_report(path: Path, *, result: JudgeResult, target: Path) -> None:
     """Emit a short markdown report next to the judged corpus."""
     s = result.stats
@@ -782,6 +866,30 @@ def _write_judge_report(path: Path, *, result: JudgeResult, target: Path) -> Non
             f"- **Recall:** {c.get('recall', 0.0):.3f}",
             f"- **F1:** {c.get('f1', 0.0):.3f}",
         ]
+
+    # Sample top-3 rows per bucket so reviewers can eyeball the run without
+    # rg'ing the JSONL. Cheap (one stream pass over already-written files).
+    samples = _sample_judged_rows(result.files_written, top_n=3)
+    if any(samples.values()):
+        lines += [
+            "",
+            "## Sample rows",
+            "",
+            "_Top 3 by judge confidence in each bucket. Use these for "
+            "eyeball validation before trusting the run; full provenance "
+            "lives on every row's `judge` block in the JSONL._",
+            "",
+        ]
+        lines += _format_sample_section(
+            "Highest-confidence promoted POSITIVES", samples["promoted_positive"]
+        )
+        lines += _format_sample_section(
+            "Highest-confidence promoted NEGATIVES", samples["promoted_negative"]
+        )
+        lines += _format_sample_section(
+            "Highest-confidence AMBIGUOUS (not promoted)", samples["ambiguous"]
+        )
+
     lines += [
         "",
         "---",
@@ -792,6 +900,14 @@ def _write_judge_report(path: Path, *, result: JudgeResult, target: Path) -> Non
         "JudgeBlock for review but keep the original label._",
         "",
     ]
+    if (path.parent / _CHECKPOINT_NAME).exists():
+        lines += [
+            f"_Tip: re-running `datascout judge` with the same "
+            f"`--out {path.parent}` resumes from the per-batch checkpoint "
+            f"({_CHECKPOINT_NAME}); already-judged rows are served from "
+            f"the disk cache rather than re-judged._",
+            "",
+        ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -1007,6 +1123,16 @@ def run_judge(
 
     cp = _load_checkpoint(resolved_out, axis)
     stats.n_resumed = len(cp.completed_row_ids)
+    if stats.n_resumed:
+        # Visible-on-the-wire signal that resume kicked in. Without this the
+        # only hint is the post-run "resumed: N" panel row, by which point
+        # the user has already wondered if their run was a duplicate.
+        _log.info(
+            "resuming axis=%r from prior run: %d row(s) already completed; "
+            "they'll be re-applied from cache rather than re-judged.",
+            axis,
+            stats.n_resumed,
+        )
 
     estimated_calls = 0
     pending: list[tuple[Path, NormalizedRecord]] = []

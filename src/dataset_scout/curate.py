@@ -108,6 +108,7 @@ class CurateResult:
         fingerprint: str,
         elapsed_seconds: float,
         failures: list[dict[str, Any]] | None = None,
+        components_zero_row: int = 0,
     ) -> None:
         self.out_dir = out_dir
         self.components_kept = components_kept
@@ -117,6 +118,12 @@ class CurateResult:
         self.fingerprint = fingerprint
         self.elapsed_seconds = elapsed_seconds
         self.failures = failures or []
+        # Components that materialised (no upstream error) but produced zero
+        # rows after row-to-record conversion — usually because the recipe's
+        # text / label columns didn't match anything in the source. Counted
+        # separately from `components_kept` (which is "non-failed") and
+        # surfaced in the CLI exit panel so the user notices honestly.
+        self.components_zero_row = components_zero_row
 
     @property
     def total_rows(self) -> int:
@@ -1043,6 +1050,7 @@ def run_curate(
         components_kept=len(materialised),
         components_skipped=len(dropped),
         components_failed=len(failures),
+        components_zero_row=sum(1 for c in materialised if not per_component.get(c.id)),
         rows_per_split={k: len(v) for k, v in splits.items()},
         fingerprint=fingerprint,
         elapsed_seconds=round(elapsed_s, 3),

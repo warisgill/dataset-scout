@@ -242,6 +242,36 @@ an "audit-ready" banner with cluster stats and a "Components
 skipped due to upstream errors" section so the corpus's
 provenance is visible at a glance.
 
+### Exit panel
+
+The CLI prints a short summary line on exit. Components are
+classified into four buckets so soft-failures aren't silent:
+
+```
+✔ 1831 row(s) written to ./mycorpus
+   (11 of 15 component(s) materialised with rows,
+    4 produced 0 rows,
+    0 dropped, 0 failed) in 35.52s
+   - splits: train=1459 · val=178 · test=194
+   - fingerprint: 6295b35b551a6876...
+   ! 4 component(s) materialised but produced 0 rows — usually a
+     recipe column mismatch. See report.md → Components for the
+     per-component count.
+   ✔ audit-ready: leakage-aware splits + filter DSL applied.
+```
+
+Buckets:
+
+- **materialised with rows** — produced `≥ 1` row that survived
+  transform + filter.
+- **produced 0 rows** — the source loaded fine but nothing
+  survived (usually a `text_column` / `label_column` mismatch in
+  the recipe). Common signal during recipe iteration.
+- **dropped** — explicitly skipped by `min_strategy_confidence`.
+- **failed** — upstream error (gated, missing config, bad split,
+  parse error). See `report.md` / `recipe.lock.yaml →
+  failed_components` for the per-component hint.
+
 ---
 
 ---
@@ -285,11 +315,17 @@ Inside `<out>/`:
 - `judge.lock.yaml` — full audit trail: axis, rubric, model,
   scout-internal `template_version`, `n_judges`, `agreement`,
   threshold, cache_dir, calibration block, stats.
-- `judge.report.md` — short rich markdown summary.
+- `judge.report.md` — short rich markdown summary including a
+  **Sample rows** section (top 3 promoted positives, top 3 promoted
+  negatives, top 3 ambiguous-not-promoted) so reviewers can eyeball
+  the run without `rg`-ing the JSONL. Also surfaces the resume tip
+  when `.judge_state.json` is present.
 - `.judge_state.json` — per-batch checkpoint keyed by
   `NormalizedRecord.stable_id`. Re-runs with the same `--out`
-  resume; the disk cache (`<workspace>/.cache/dataset-scout/judge/`)
-  makes already-judged rows free even without the checkpoint.
+  resume — and emit a one-line `resuming axis=... already completed`
+  log on entry so the resume isn't silent. The disk cache
+  (`<workspace>/.cache/dataset-scout/judge/`) makes already-judged
+  rows free even without the checkpoint.
 
 ### Worked example
 

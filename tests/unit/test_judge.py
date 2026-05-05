@@ -666,3 +666,108 @@ def test_calibration_floor_proceed_overrides(tmp_path: Path) -> None:
     )
     assert result.calibration is not None
     assert result.calibration["precision"] == pytest.approx(0.5)
+
+
+# ─── M10 polish: report sample rows + resume-detect log ─────────────
+
+
+def test_judge_report_includes_sample_rows(tmp_path: Path) -> None:
+    """The judge.report.md surfaces top-N rows per bucket so reviewers
+    can eyeball the run without rg-ing the JSONL."""
+    ctx = _ctx(tmp_path)
+    target = _write_corpus(
+        tmp_path / "corpus",
+        [
+            _row(text="clear positive row", rid="rp"),
+            _row(text="clear negative row", rid="rn"),
+            _row(text="genuinely ambiguous row", rid="ra"),
+        ],
+    )
+    chat = _ScriptedChat(
+        by_text={
+            "clear positive row": _payload("positive", 0.96, subcategory="strong-pos"),
+            "clear negative row": _payload("negative", 0.94, subcategory="strong-neg"),
+            "genuinely ambiguous row": _payload("ambiguous", 0.85, subcategory="ambiguous-cat"),
+        }
+    )
+    result = run_judge(ctx, target, axis="psych_harm", chat_client=chat, threshold=0.8)
+
+    report = (result.out_dir / "judge.report.md").read_text(encoding="utf-8")
+    assert "## Sample rows" in report
+    assert "Highest-confidence promoted POSITIVES" in report
+    assert "Highest-confidence promoted NEGATIVES" in report
+    assert "Highest-confidence AMBIGUOUS (not promoted)" in report
+    # Subcategories from our scripted payloads should appear in the report.
+    assert "strong-pos" in report
+    assert "strong-neg" in report
+    assert "ambiguous-cat" in report
+
+
+def test_judge_report_resume_tip_when_state_file_present(tmp_path: Path) -> None:
+    """When the per-batch checkpoint is on disk after a run, the report
+    surfaces the resume tip so users discover it without reading the
+    code."""
+    ctx = _ctx(tmp_path)
+    target = _write_corpus(tmp_path / "corpus", [_row(text="x", rid="r1")])
+    chat = _ScriptedChat(responses=[_payload("positive", 0.95)])
+    result = run_judge(ctx, target, axis="x", chat_client=chat, threshold=0.8)
+
+    report = (result.out_dir / "judge.report.md").read_text(encoding="utf-8")
+    assert _CHECKPOINT_NAME in report
+    assert "resume" in report.lower()
+
+
+def test_judge_resume_emits_log_line(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """Re-running with an existing checkpoint logs an explicit resume
+    line on entry so users see it in their terminal, not just in the
+    post-run panel."""
+    import logging
+
+    ctx = _ctx(tmp_path)
+    target = _write_corpus(
+        tmp_path / "corpus",
+        [_row(text="row1", rid="r1"), _row(text="row2", rid="r2")],
+    )
+    chat = _ScriptedChat(responses=[_payload("positive", 0.95)] * 4)
+
+    # First run: produces the checkpoint.
+    run_judge(ctx, target, axis="x", chat_client=chat, threshold=0.8)
+    assert (target / "judged" / _CHECKPOINT_NAME).exists()
+
+    # Second run: should emit the resume log line on entry.
+    with caplog.at_level(logging.INFO, logger="dataset_scout.judge"):
+        run_judge(ctx, target, axis="x", chat_client=chat, threshold=0.8)
+    msgs = [r.getMessage() for r in caplog.records]
+    assert any("resuming axis=" in m and "already completed" in m for m in msgs), msgs
+
+
+# ─── M10 polish: curate panel surfaces zero-row components ─────────
+
+
+def test_curate_result_components_zero_row_default_and_set() -> None:
+    """The new components_zero_row field defaults to 0 (back-compat) and
+    accepts a positive count."""
+    from dataset_scout.curate import CurateResult
+
+    r = CurateResult(
+        out_dir=Path("."),
+        components_kept=10,
+        components_skipped=2,
+        components_failed=1,
+        rows_per_split={"train": 100, "val": 20, "test": 20},
+        fingerprint="abc",
+        elapsed_seconds=1.0,
+    )
+    assert r.components_zero_row == 0
+
+    r2 = CurateResult(
+        out_dir=Path("."),
+        components_kept=10,
+        components_skipped=2,
+        components_failed=1,
+        rows_per_split={"train": 100},
+        fingerprint="abc",
+        elapsed_seconds=1.0,
+        components_zero_row=3,
+    )
+    assert r2.components_zero_row == 3
