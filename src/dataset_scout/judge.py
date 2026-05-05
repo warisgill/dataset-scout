@@ -1,0 +1,917 @@
+"""LLM-as-judge label rescue (M10).
+
+Promotes per-row labels from "unknown / weakly inferred" to "judged with
+stated confidence" by calling an Azure OpenAI chat deployment per row,
+parsing a strict JSON verdict into a :class:`JudgeBlock`, and applying
+an explicit-gap promotion rule: only ``positive`` / ``negative`` verdicts
+at-or-above the configured threshold rewrite the row's label.
+
+Reference: ``M10-judge-design.md`` (in particular §3 CLI surface,
+§4 schema, §5 promotion rule, §6 cache, §9 resumability, §10 failure
+modes). The CLI verb is a thin wrapper over :func:`run_judge`.
+
+Network-free at import time. Heavy imports (``litellm``, ``azure-identity``)
+are deferred into the chat-client call site so unit tests never pay for
+them and the test suite can inject a fake client via the ``chat_client``
+parameter on :func:`run_judge`.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import os
+import secrets
+import statistics
+from collections.abc import Callable, Iterable, Iterator
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from dataset_scout.core import JudgeBlock, LabelKind, NormalizedRecord
+from dataset_scout.errors import DatasetScoutError, LLMError
+from dataset_scout.llm_client import build_completion_kwargs, extract_content, import_litellm
+
+if TYPE_CHECKING:
+    from dataset_scout.context import ScoutContext
+
+# Bumped only when scout's prompt template (or response post-processing)
+# changes in a way that would invalidate cached verdicts. Scout-internal;
+# never coordinated with any other tool.
+JUDGE_TEMPLATE_VERSION = "1"
+
+# Per-batch checkpoint cadence (rows per checkpoint flush). The figure
+# is a tradeoff between resumability granularity and IO churn.
+DEFAULT_BATCH_SIZE = 50
+
+# Default per-row cap on judge JSON output. Plenty of room for a
+# rationale; bounds runaway responses.
+_MAX_TOKENS = 600
+
+_log = logging.getLogger(__name__)
+
+# Verdict label → corpus label. ``negative`` means "this row does NOT
+# satisfy the axis question"; we promote it to ``benign``. Scout's
+# ``hard_negative`` label is reserved for recon-side strategy outputs
+# and is not produced by the judge.
+_VERDICT_TO_LABEL: dict[str, Literal["positive", "benign", "hard_negative"]] = {
+    "positive": "positive",
+    "negative": "benign",
+}
+
+
+# ─── prompt rendering ───────────────────────────────────────────────
+
+
+_PROMPT_TEMPLATE = """\
+You are an LLM judge labeling rows of a public dataset for an AI
+security engineer. Answer ONE labeling question (the "axis") about
+the row's text, with a strict JSON verdict.
+
+AXIS
+----
+<<AXIS>>
+
+RUBRIC
+------
+<<RUBRIC>>
+
+ROW TEXT
+--------
+<<TEXT>>
+
+INSTRUCTIONS
+------------
+1. Decide whether the row's text is, with respect to the axis above,
+   POSITIVE (clearly matches), NEGATIVE (clearly does not), or
+   AMBIGUOUS (genuinely unclear or partial). Be honest — engineers
+   prefer an explicit "ambiguous" to a confidently-wrong call.
+2. Pick a SHORT kebab-case subcategory describing the row's flavor
+   under the axis (e.g. "self-harm-ideation", "benign-emotion-talk",
+   "borderline-distress"). Use a stable vocabulary.
+3. Self-rate your CONFIDENCE in the verdict on a 0.0-1.0 scale.
+   0.9+ = "I would bet on this"; 0.7-0.9 = "fairly sure"; below 0.7
+   = "calling it but uncertain".
+4. Write a ONE-SENTENCE rationale.
+5. Respond with STRICT JSON ONLY — no prose, no markdown fences,
+   no leading/trailing whitespace beyond the JSON object itself:
+
+{
+  "verdict": "positive" | "negative" | "ambiguous",
+  "subcategory": "<short kebab-case>",
+  "confidence": <float 0.0-1.0>,
+  "rationale": "<one sentence>"
+}
+"""
+
+_RETRY_REMINDER = (
+    "Your previous reply was not valid JSON in the required shape. "
+    "Reply again with STRICT JSON ONLY in the exact schema specified, "
+    "no prose, no markdown fences."
+)
+
+
+def render_judge_prompt(*, axis: str, rubric: str | None, text: str) -> str:
+    """Render the exact prompt sent to the judge model. Pure; no I/O.
+
+    ``rubric`` is optional free text. When ``None``, an explicit
+    ``(no rubric supplied — apply the axis name strictly)`` placeholder
+    is rendered so the prompt stays well-formed and snapshot-stable.
+    """
+    rubric_text = (
+        rubric.strip()
+        if rubric and rubric.strip()
+        else ("(no rubric supplied — apply the axis name strictly and be conservative)")
+    )
+    return (
+        _PROMPT_TEMPLATE.replace("<<AXIS>>", axis)
+        .replace("<<RUBRIC>>", rubric_text)
+        .replace("<<TEXT>>", text)
+    )
+
+
+# ─── chat-client protocol ───────────────────────────────────────────
+
+
+class _ChatClient:
+    """Minimal single-shot chat-completion interface used by the judge.
+
+    Pulled out so tests inject a deterministic fake without monkey-
+    patching ``litellm``. ``call`` returns the model's raw string
+    content. Implementations must raise :class:`LLMError` on transport
+    failures and :class:`ContentFilterError` on content-filter blocks.
+    """
+
+    def call(self, *, messages: list[dict[str, str]], timeout_s: float) -> str:
+        raise NotImplementedError
+
+
+class ContentFilterError(LLMError):
+    """Raised when AOAI rejected a row via its content-safety filter.
+
+    Soft per-row failure; the run continues. Counted in
+    ``stats.n_content_filter_blocked``.
+    """
+
+
+class JudgeParseError(LLMError):
+    """Raised when the judge response cannot be parsed into a JudgeBlock."""
+
+
+@dataclass
+class _LiteLLMChatClient(_ChatClient):
+    """Default ``_ChatClient`` that routes through ``litellm`` to AOAI.
+
+    Re-uses the shared ``llm_client.build_completion_kwargs`` helper so
+    auth + routing are identical to decompose / strategy.
+    """
+
+    ctx: ScoutContext
+    token_provider: Any | None = None
+
+    def call(self, *, messages: list[dict[str, str]], timeout_s: float) -> str:
+        litellm = import_litellm()
+        kwargs = build_completion_kwargs(
+            self.ctx,
+            messages=messages,
+            response_format=BaseModel,  # triggers json_object mode
+            timeout_s=timeout_s,
+            token_provider=self.token_provider,
+        )
+        kwargs["max_tokens"] = _MAX_TOKENS
+        try:
+            response = litellm.completion(**kwargs)
+        except Exception as exc:
+            msg = str(exc).lower()
+            if "content_filter" in msg or "responsibleaipolicyviolation" in msg:
+                raise ContentFilterError(str(exc)) from exc
+            raise LLMError(f"judge LLM call failed: {exc}") from exc
+        return extract_content(response)
+
+
+# ─── response parsing ───────────────────────────────────────────────
+
+
+class _JudgeResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    verdict: Literal["positive", "negative", "ambiguous"]
+    subcategory: str = Field(min_length=1, max_length=80)
+    confidence: float = Field(ge=0.0, le=1.0)
+    rationale: str = Field(min_length=1)
+
+
+def _parse_judge_content(content: str) -> _JudgeResponse:
+    payload = json.loads(content)
+    return _JudgeResponse.model_validate(payload)
+
+
+# ─── cache ───────────────────────────────────────────────────────────
+
+
+def judge_cache_dir(ctx: ScoutContext) -> Path:
+    """Per-workspace judge cache root.
+
+    Distinct from any other cache; never shared across tools (the
+    template_version is scout-internal — see design doc §6).
+    """
+    return ctx.cache_dir / "judge"
+
+
+def _cache_key(*, prompt: str, axis: str, model: str, template_version: str) -> str:
+    h = hashlib.sha256()
+    h.update(prompt.encode("utf-8"))
+    h.update(b"\x00")
+    h.update(axis.encode("utf-8"))
+    h.update(b"\x00")
+    h.update(model.encode("utf-8"))
+    h.update(b"\x00")
+    h.update(template_version.encode("utf-8"))
+    return h.hexdigest()
+
+
+def _cache_path(cache_dir: Path, key: str) -> Path:
+    # Two-char shard so a single dir doesn't grow unbounded on big runs.
+    return cache_dir / key[:2] / f"{key}.json"
+
+
+def _read_cache(path: Path) -> _JudgeResponse | None:
+    """Read a cached judge response. Corrupt files return ``None`` and
+    are deleted so the next call regenerates the entry."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return None
+    try:
+        return _JudgeResponse.model_validate(json.loads(text))
+    except (json.JSONDecodeError, ValidationError):
+        import contextlib
+
+        with contextlib.suppress(OSError):
+            path.unlink()
+        return None
+
+
+def _write_cache(path: Path, resp: _JudgeResponse) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + f".tmp-{secrets.token_hex(4)}")
+    tmp.write_text(resp.model_dump_json(), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+# ─── single-call wrapper ────────────────────────────────────────────
+
+
+def _one_judge_call(
+    *,
+    prompt: str,
+    chat_client: _ChatClient,
+    timeout_s: float,
+) -> _JudgeResponse:
+    """One judge call with one parse-error retry. Raises on terminal failure."""
+    messages: list[dict[str, str]] = [{"role": "user", "content": prompt}]
+    last_error: Exception | None = None
+    for attempt in range(2):
+        content = chat_client.call(messages=messages, timeout_s=timeout_s)
+        try:
+            return _parse_judge_content(content)
+        except (json.JSONDecodeError, ValidationError) as exc:
+            last_error = exc
+            if attempt == 0:
+                messages = [
+                    {"role": "user", "content": prompt},
+                    {"role": "assistant", "content": content},
+                    {"role": "user", "content": _RETRY_REMINDER},
+                ]
+                continue
+            raise JudgeParseError(f"judge returned invalid JSON twice: {exc}") from exc
+    raise JudgeParseError(f"judge returned invalid JSON: {last_error}")
+
+
+def _judged_block(
+    resps: list[_JudgeResponse],
+    *,
+    axis: str,
+    model: str,
+    template_version: str,
+    n_judges: int,
+    agreement_mode: Literal["single", "majority", "unanimous"],
+) -> tuple[JudgeBlock, float]:
+    """Aggregate ``len(resps)`` judge responses into one ``JudgeBlock``
+    plus the derived ``label_confidence`` per design doc §5.
+
+    For ``majority``/``unanimous`` the chosen verdict + subcategory +
+    rationale come from the agreeing-judges majority. ``confidence`` on
+    the block is the ``mean_confidence_of_agreeing`` (the raw self-rated
+    figure, before agreement weighting); the *derived* ``label_confidence``
+    is the second tuple element.
+    """
+    verdicts = [r.verdict for r in resps]
+    if agreement_mode == "single":
+        chosen = resps[0]
+        derived = chosen.confidence
+        return (
+            JudgeBlock(
+                axis=axis,
+                verdict=chosen.verdict,
+                subcategory=chosen.subcategory,
+                confidence=chosen.confidence,
+                rationale=chosen.rationale,
+                model=model,
+                template_version=template_version,
+                n_judges=n_judges,
+                agreement="single",
+            ),
+            derived,
+        )
+    if agreement_mode == "unanimous":
+        if len(set(verdicts)) != 1:
+            chosen = resps[0]
+            mean_conf = round(statistics.fmean(r.confidence for r in resps), 6)
+            return (
+                JudgeBlock(
+                    axis=axis,
+                    verdict="ambiguous",
+                    subcategory="multi-judge-disagreement",
+                    confidence=mean_conf,
+                    rationale=(f"unanimous required but verdicts split: {', '.join(verdicts)}"),
+                    model=model,
+                    template_version=template_version,
+                    n_judges=n_judges,
+                    agreement="unanimous",
+                ),
+                0.0,
+            )
+        agreeing = resps
+        mean_conf = round(statistics.fmean(r.confidence for r in agreeing), 6)
+        chosen = agreeing[0]
+        return (
+            JudgeBlock(
+                axis=axis,
+                verdict=chosen.verdict,
+                subcategory=chosen.subcategory,
+                confidence=mean_conf,
+                rationale=chosen.rationale,
+                model=model,
+                template_version=template_version,
+                n_judges=n_judges,
+                agreement="unanimous",
+            ),
+            mean_conf,
+        )
+    # majority
+    counts: dict[str, int] = {}
+    for v in verdicts:
+        counts[v] = counts.get(v, 0) + 1
+    top_verdict, top_count = max(counts.items(), key=lambda kv: kv[1])
+    if top_count <= n_judges // 2:
+        chosen = resps[0]
+        mean_conf = round(statistics.fmean(r.confidence for r in resps), 6)
+        return (
+            JudgeBlock(
+                axis=axis,
+                verdict="ambiguous",
+                subcategory="multi-judge-no-majority",
+                confidence=mean_conf,
+                rationale=(f"no majority among {n_judges} judges: {', '.join(verdicts)}"),
+                model=model,
+                template_version=template_version,
+                n_judges=n_judges,
+                agreement="majority",
+            ),
+            0.0,
+        )
+    agreeing = [r for r in resps if r.verdict == top_verdict]
+    mean_conf = round(statistics.fmean(r.confidence for r in agreeing), 6)
+    chosen = agreeing[0]
+    derived = round((len(agreeing) / n_judges) * mean_conf, 6)
+    return (
+        JudgeBlock(
+            axis=axis,
+            verdict=chosen.verdict,
+            subcategory=chosen.subcategory,
+            confidence=mean_conf,
+            rationale=chosen.rationale,
+            model=model,
+            template_version=template_version,
+            n_judges=n_judges,
+            agreement="majority",
+        ),
+        derived,
+    )
+
+
+# ─── promotion ──────────────────────────────────────────────────────
+
+
+def _promote(
+    record: NormalizedRecord,
+    block: JudgeBlock,
+    label_confidence: float,
+    *,
+    threshold: float,
+) -> NormalizedRecord:
+    """Apply the explicit-gap promotion rule (design doc §5).
+
+    Always attaches ``block`` to the row so reviewers see *why* a
+    promotion was declined; only updates ``label`` / ``label_kind`` /
+    ``label_confidence`` when the verdict is positive/negative AND the
+    derived confidence is at-or-above ``threshold``.
+    """
+    if block.verdict in ("positive", "negative") and label_confidence >= threshold:
+        new_label = _VERDICT_TO_LABEL[block.verdict]
+        return record.model_copy(
+            update={
+                "label": new_label,
+                "label_kind": LabelKind.JUDGED,
+                "label_confidence": label_confidence,
+                "judge": block,
+            }
+        )
+    # below threshold, ambiguous, or unknown verdict: keep label,
+    # attach block + derived confidence so the audit trail is complete.
+    return record.model_copy(update={"judge": block, "label_confidence": label_confidence})
+
+
+# ─── corpus IO ──────────────────────────────────────────────────────
+
+
+_CORPUS_FILES: tuple[str, ...] = ("train.jsonl", "val.jsonl", "test.jsonl")
+
+
+def _resolve_corpus_files(target: Path) -> list[Path]:
+    """Return JSONL files that make up the corpus rooted at ``target``.
+
+    Directory: any subset of ``train.jsonl``/``val.jsonl``/``test.jsonl``
+    that exist (in that order). Single ``.jsonl`` file: just that file.
+    """
+    if target.is_file() and target.suffix == ".jsonl":
+        return [target]
+    if not target.is_dir():
+        raise DatasetScoutError(f"judge target {target} is neither a directory nor a .jsonl file")
+    files = [target / name for name in _CORPUS_FILES if (target / name).is_file()]
+    if not files:
+        # Fall back: any *.jsonl in the directory, sorted for stability.
+        files = sorted(target.glob("*.jsonl"))
+    if not files:
+        raise DatasetScoutError(f"no JSONL files found under {target}")
+    return files
+
+
+def _iter_records(path: Path) -> Iterator[NormalizedRecord]:
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            yield NormalizedRecord.model_validate(json.loads(line))
+
+
+def _write_records(path: Path, records: Iterable[NormalizedRecord]) -> int:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    n = 0
+    with path.open("w", encoding="utf-8") as f:
+        for rec in records:
+            f.write(rec.model_dump_json() + "\n")
+            n += 1
+    return n
+
+
+# ─── checkpoint ─────────────────────────────────────────────────────
+
+
+_CHECKPOINT_NAME = ".judge_state.json"
+
+
+@dataclass
+class _Checkpoint:
+    axis: str
+    completed_row_ids: set[str] = field(default_factory=set)
+    in_flight_batch: list[str] | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "axis": self.axis,
+            "completed_row_ids": sorted(self.completed_row_ids),
+            "in_flight_batch": self.in_flight_batch,
+        }
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> _Checkpoint:
+        return cls(
+            axis=str(data.get("axis", "")),
+            completed_row_ids=set(data.get("completed_row_ids") or []),
+            in_flight_batch=list(data["in_flight_batch"])
+            if data.get("in_flight_batch") is not None
+            else None,
+        )
+
+
+def _load_checkpoint(out_dir: Path, axis: str) -> _Checkpoint:
+    path = out_dir / _CHECKPOINT_NAME
+    if not path.is_file():
+        return _Checkpoint(axis=axis)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        cp = _Checkpoint.from_json(data)
+    except (json.JSONDecodeError, OSError, ValidationError):
+        # Corrupt checkpoint: start fresh; old verdicts come back from
+        # the disk cache anyway (regenerable).
+        return _Checkpoint(axis=axis)
+    if cp.axis != axis:
+        # Different axis: treat as fresh run for this axis. We don't
+        # support multi-axis checkpoints in one out_dir.
+        return _Checkpoint(axis=axis)
+    return cp
+
+
+def _save_checkpoint(out_dir: Path, cp: _Checkpoint) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / _CHECKPOINT_NAME
+    tmp = path.with_suffix(path.suffix + f".tmp-{secrets.token_hex(4)}")
+    tmp.write_text(json.dumps(cp.to_json(), indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+# ─── result types ───────────────────────────────────────────────────
+
+
+@dataclass
+class JudgeStats:
+    """Counts emitted by a judge run; mirrors the lockfile ``stats`` block."""
+
+    n_input: int = 0
+    n_judged: int = 0
+    n_promoted_positive: int = 0
+    n_promoted_negative: int = 0
+    n_left_unknown: int = 0
+    n_cache_hits: int = 0
+    n_skipped: int = 0
+    n_content_filter_blocked: int = 0
+    n_parse_errors: int = 0
+    n_api_errors: int = 0
+    n_resumed: int = 0
+
+    def as_dict(self) -> dict[str, int]:
+        return {
+            "n_input": self.n_input,
+            "n_judged": self.n_judged,
+            "n_promoted_positive": self.n_promoted_positive,
+            "n_promoted_negative": self.n_promoted_negative,
+            "n_left_unknown": self.n_left_unknown,
+            "n_cache_hits": self.n_cache_hits,
+            "n_skipped": self.n_skipped,
+            "n_content_filter_blocked": self.n_content_filter_blocked,
+            "n_parse_errors": self.n_parse_errors,
+            "n_api_errors": self.n_api_errors,
+            "n_resumed": self.n_resumed,
+        }
+
+
+@dataclass
+class JudgeResult:
+    """Public result of :func:`run_judge`. Mirrored into report + lockfile."""
+
+    out_dir: Path
+    axis: str
+    rubric: str | None
+    model: str
+    template_version: str
+    n_judges: int
+    agreement: Literal["single", "majority", "unanimous"]
+    threshold: float
+    cache_dir: Path
+    stats: JudgeStats
+    failures: list[dict[str, Any]] = field(default_factory=list)
+    elapsed_seconds: float = 0.0
+    files_written: list[Path] = field(default_factory=list)
+    calibration: dict[str, Any] | None = None
+    dry_run: bool = False
+    estimated_calls: int = 0
+
+
+# ─── core engine ────────────────────────────────────────────────────
+
+
+def _judge_one_record(
+    rec: NormalizedRecord,
+    *,
+    axis: str,
+    rubric: str | None,
+    model: str,
+    template_version: str,
+    judges: int,
+    agreement_mode: Literal["single", "majority", "unanimous"],
+    cache_dir: Path,
+    chat_client: _ChatClient,
+    timeout_s: float,
+    stats: JudgeStats,
+) -> tuple[JudgeBlock | None, float]:
+    """Judge one row. Returns ``(block, derived_confidence)`` or
+    ``(None, 0.0)`` on soft failure (with stats updated)."""
+    prompt = render_judge_prompt(axis=axis, rubric=rubric, text=rec.text)
+    base_key = _cache_key(prompt=prompt, axis=axis, model=model, template_version=template_version)
+    responses: list[_JudgeResponse] = []
+    cache_hits = 0
+    for j in range(judges):
+        # Salt the cache key with the judge index so a 3-judge run
+        # caches three distinct verdicts (independent calls), not one
+        # call replayed three times. Stable across runs given the same
+        # (prompt, axis, model, template_version, j).
+        salted = (
+            _cache_key(
+                prompt=prompt,
+                axis=axis,
+                model=f"{model}#j{j}",
+                template_version=template_version,
+            )
+            if judges > 1
+            else base_key
+        )
+        cpath = _cache_path(cache_dir, salted)
+        cached = _read_cache(cpath)
+        if cached is not None:
+            responses.append(cached)
+            cache_hits += 1
+            continue
+        try:
+            resp = _one_judge_call(prompt=prompt, chat_client=chat_client, timeout_s=timeout_s)
+        except ContentFilterError as exc:
+            stats.n_content_filter_blocked += 1
+            stats.n_skipped += 1
+            _log.warning("content filter blocked row %s: %s", rec.stable_id, exc)
+            return None, 0.0
+        except JudgeParseError as exc:
+            stats.n_parse_errors += 1
+            stats.n_skipped += 1
+            _log.warning("judge parse error on row %s: %s", rec.stable_id, exc)
+            return None, 0.0
+        except LLMError as exc:
+            stats.n_api_errors += 1
+            stats.n_skipped += 1
+            _log.warning("judge API error on row %s: %s", rec.stable_id, exc)
+            return None, 0.0
+        _write_cache(cpath, resp)
+        responses.append(resp)
+    stats.n_cache_hits += cache_hits
+    block, derived = _judged_block(
+        responses,
+        axis=axis,
+        model=model,
+        template_version=template_version,
+        n_judges=judges,
+        agreement_mode=agreement_mode,
+    )
+    return block, derived
+
+
+def _resolve_chat_client(ctx: ScoutContext, chat_client: _ChatClient | None) -> _ChatClient:
+    if chat_client is not None:
+        return chat_client
+    if not ctx.aoai_configured:
+        raise LLMError(
+            "Azure OpenAI is not configured. Set AZURE_OPENAI_ENDPOINT "
+            "and AZURE_OPENAI_DEPLOYMENT (and run `az login` for Entra "
+            "auth)."
+        )
+    return _LiteLLMChatClient(ctx=ctx)
+
+
+def _resolve_model_name(ctx: ScoutContext, override: str | None) -> str:
+    if override:
+        return override
+    deployment = ctx.aoai_deployment or "unconfigured"
+    return f"azure-openai/{deployment}"
+
+
+def _eligible_for_judging(rec: NormalizedRecord, *, only_unknown: bool) -> bool:
+    """Whether a row should be sent to the judge.
+
+    With ``only_unknown=True`` (the default), rows already labelled with
+    ``GROUND_TRUTH`` keep their authoritative labels untouched — judge
+    rescue is for rows where we don't already trust the label. Rows
+    that have already been ``JUDGED`` are skipped to avoid double-judge
+    on resume; pass ``only_unknown=False`` (i.e. ``--re-judge-all``) to
+    override.
+    """
+    if only_unknown:
+        if rec.label_kind == LabelKind.GROUND_TRUTH:
+            return False
+        if rec.label_kind == LabelKind.JUDGED:
+            return False
+    return True
+
+
+def run_judge(
+    ctx: ScoutContext,
+    target: Path,
+    *,
+    axis: str,
+    rubric: str | None = None,
+    judges: int = 1,
+    agreement: Literal["single", "majority", "unanimous"] = "single",
+    threshold: float = 0.8,
+    out_dir: Path | None = None,
+    only_unknown: bool = True,
+    re_judge_all: bool = False,
+    dry_run: bool = False,
+    model: str | None = None,
+    timeout_s: float = 30.0,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+    chat_client: _ChatClient | None = None,
+    progress: Callable[[int, int], None] | None = None,
+) -> JudgeResult:
+    """Run the LLM-as-judge label-rescue pass over a corpus.
+
+    ``target`` is a directory (containing ``train.jsonl``/``val.jsonl``/
+    ``test.jsonl``, or any other ``*.jsonl`` files) or a single
+    ``.jsonl`` file. ``out_dir`` defaults to ``<target>/judged`` (or, for
+    single-file inputs, ``<file>.judged/``); the original corpus is
+    never overwritten in this slice.
+
+    Resumability: the per-run checkpoint at ``<out_dir>/.judge_state.json``
+    records ``stable_id`` of completed rows. Re-running with the same
+    ``out_dir`` resumes; the disk cache (``judge_cache_dir(ctx)``)
+    eliminates re-paying for already-judged rows even without a checkpoint.
+
+    Soft failures: the run completes regardless of per-row failures
+    (API errors, parse errors twice in a row, content-filter rejections,
+    cache corruption). Each is counted in ``result.stats``.
+    """
+    import time
+
+    started = time.monotonic()
+
+    if judges < 1:
+        raise DatasetScoutError("judges must be >= 1")
+    if judges > 1 and agreement == "single":
+        raise DatasetScoutError(f"agreement={agreement!r} requires judges=1; got judges={judges}")
+    if judges == 1 and agreement != "single":
+        raise DatasetScoutError(f"agreement={agreement!r} requires judges>=2; got judges=1")
+    if agreement == "majority" and judges < 3:
+        raise DatasetScoutError("majority agreement requires at least 3 judges")
+    if agreement == "unanimous" and judges < 3:
+        raise DatasetScoutError("unanimous agreement requires at least 3 judges")
+    if not 0.0 <= threshold <= 1.0:
+        raise DatasetScoutError("threshold must be in [0.0, 1.0]")
+
+    files = _resolve_corpus_files(target)
+    resolved_out: Path
+    if out_dir is None:
+        if target.is_file():
+            resolved_out = target.with_suffix(target.suffix + ".judged")
+        else:
+            resolved_out = target / "judged"
+    else:
+        resolved_out = out_dir
+    resolved_out.mkdir(parents=True, exist_ok=True)
+
+    cache_dir = judge_cache_dir(ctx)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    model_name = _resolve_model_name(ctx, model)
+    stats = JudgeStats()
+    failures: list[dict[str, Any]] = []
+    files_written: list[Path] = []
+
+    only_unknown_eff = only_unknown and not re_judge_all
+    chat = None if dry_run else _resolve_chat_client(ctx, chat_client)
+
+    cp = _load_checkpoint(resolved_out, axis)
+    stats.n_resumed = len(cp.completed_row_ids)
+
+    estimated_calls = 0
+    pending: list[tuple[Path, NormalizedRecord]] = []
+    out_records: dict[Path, list[NormalizedRecord]] = {f: [] for f in files}
+    for src in files:
+        out_path = resolved_out / src.name
+        for rec in _iter_records(src):
+            stats.n_input += 1
+            out_records[src].append(rec)
+            if not _eligible_for_judging(rec, only_unknown=only_unknown_eff):
+                continue
+            if rec.stable_id in cp.completed_row_ids:
+                # Already judged on a prior run; the cached verdict will
+                # be re-applied below from disk cache.
+                pass
+            estimated_calls += judges
+            pending.append((src, rec))
+
+    if dry_run:
+        elapsed = time.monotonic() - started
+        return JudgeResult(
+            out_dir=resolved_out,
+            axis=axis,
+            rubric=rubric,
+            model=model_name,
+            template_version=JUDGE_TEMPLATE_VERSION,
+            n_judges=judges,
+            agreement=agreement,
+            threshold=threshold,
+            cache_dir=cache_dir,
+            stats=stats,
+            failures=failures,
+            elapsed_seconds=round(elapsed, 3),
+            files_written=files_written,
+            dry_run=True,
+            estimated_calls=estimated_calls,
+        )
+
+    assert chat is not None  # narrowed for type-checkers
+    judged_by_id: dict[str, tuple[JudgeBlock, float]] = {}
+    total = len(pending)
+    batch_buf: list[str] = []
+    for n_done, (_src, rec) in enumerate(pending, start=1):
+        block, derived = _judge_one_record(
+            rec,
+            axis=axis,
+            rubric=rubric,
+            model=model_name,
+            template_version=JUDGE_TEMPLATE_VERSION,
+            judges=judges,
+            agreement_mode=agreement,
+            cache_dir=cache_dir,
+            chat_client=chat,
+            timeout_s=timeout_s,
+            stats=stats,
+        )
+        if block is None:
+            failures.append(
+                {
+                    "stable_id": rec.stable_id,
+                    "source": rec.source,
+                    "source_row_id": rec.source_row_id,
+                    "category": "judge_failure",
+                }
+            )
+        else:
+            judged_by_id[rec.stable_id] = (block, derived)
+            cp.completed_row_ids.add(rec.stable_id)
+            stats.n_judged += 1
+        batch_buf.append(rec.stable_id)
+        if progress is not None:
+            progress(n_done, total)
+        if len(batch_buf) >= batch_size:
+            cp.in_flight_batch = None
+            _save_checkpoint(resolved_out, cp)
+            batch_buf = []
+    cp.in_flight_batch = None
+    _save_checkpoint(resolved_out, cp)
+
+    # Apply promotions and write outputs.
+    for src in files:
+        out_path = resolved_out / src.name
+        promoted: list[NormalizedRecord] = []
+        for rec in out_records[src]:
+            judged = judged_by_id.get(rec.stable_id)
+            if judged is None:
+                promoted.append(rec)
+                continue
+            block, derived = judged
+            new_rec = _promote(rec, block, derived, threshold=threshold)
+            if new_rec.label_kind == LabelKind.JUDGED:
+                if new_rec.label == "positive":
+                    stats.n_promoted_positive += 1
+                else:
+                    stats.n_promoted_negative += 1
+            else:
+                stats.n_left_unknown += 1
+            promoted.append(new_rec)
+        _write_records(out_path, promoted)
+        files_written.append(out_path)
+
+    elapsed = time.monotonic() - started
+    return JudgeResult(
+        out_dir=resolved_out,
+        axis=axis,
+        rubric=rubric,
+        model=model_name,
+        template_version=JUDGE_TEMPLATE_VERSION,
+        n_judges=judges,
+        agreement=agreement,
+        threshold=threshold,
+        cache_dir=cache_dir,
+        stats=stats,
+        failures=failures,
+        elapsed_seconds=round(elapsed, 3),
+        files_written=files_written,
+        estimated_calls=estimated_calls,
+    )
+
+
+__all__ = [
+    "DEFAULT_BATCH_SIZE",
+    "JUDGE_TEMPLATE_VERSION",
+    "ContentFilterError",
+    "JudgeParseError",
+    "JudgeResult",
+    "JudgeStats",
+    "_ChatClient",
+    "judge_cache_dir",
+    "render_judge_prompt",
+    "run_judge",
+]

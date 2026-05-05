@@ -105,6 +105,47 @@ def inspect(
     )
 
 
+def judge(
+    target: str | Path,
+    *,
+    axis: str,
+    ctx: ScoutContext | None = None,
+    rubric: str | None = None,
+    judges: int = 1,
+    agreement: str = "single",
+    threshold: float = 0.8,
+    out_dir: str | Path | None = None,
+    only_unknown: bool = True,
+    re_judge_all: bool = False,
+    dry_run: bool = False,
+) -> object:
+    """Run the LLM-as-judge label-rescue pass over a corpus (M10).
+
+    Reference: ``M10-judge-design.md`` §3 (CLI surface) and §5
+    (promotion rule). The CLI verb is a thin wrapper over
+    :func:`dataset_scout.judge.run_judge`.
+    """
+    from pathlib import Path as _Path
+    from typing import Literal, cast
+
+    from dataset_scout.context import ScoutContext as _Ctx
+    from dataset_scout.judge import run_judge
+
+    return run_judge(
+        ctx if ctx is not None else _Ctx.from_env(),
+        _Path(target),
+        axis=axis,
+        rubric=rubric,
+        judges=judges,
+        agreement=cast("Literal['single', 'majority', 'unanimous']", agreement),
+        threshold=threshold,
+        out_dir=_Path(out_dir) if out_dir is not None else None,
+        only_unknown=only_unknown,
+        re_judge_all=re_judge_all,
+        dry_run=dry_run,
+    )
+
+
 def curate(
     recipe_path: str | Path,
     out_dir: str | Path,
@@ -168,5 +209,6 @@ __all__ = [
     "__version__",
     "curate",
     "inspect",
+    "judge",
     "recon",
 ]
