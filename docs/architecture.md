@@ -7,6 +7,9 @@ milestone.
 
 ## 1. Pipeline
 
+The pre-eval data flow, end to end. Solid arrows are required;
+dashed arrows are M10 opt-ins.
+
 ```
 brief + flags
     │
@@ -55,9 +58,39 @@ ReconResult ─── render ──▶  report.md         (gaps lead when notabl
                          └▶  decomposition.yaml  (stand-alone, hand-editable)
                          │
                          └▶  recipe.draft.yaml   (real columns ready for curate)
+                                          │
+                                          ▼
+                              datascout curate  ─── parallel materialiser ──▶
+                                          │       (per-component soft failures,
+                                          │        MinHash dedup, leakage-aware
+                                          │        splits, filter DSL)
+                                          ▼
+                              Corpus directory:
+                                   train.jsonl  /  eval.jsonl
+                                   recipe.lock.yaml   (audit_readiness: ready)
+                                   report.md          (5-second scorecard)
+                                   manifest.json      (fingerprint)
+                                          │
+                                          ▼  - - (M10 opt-in: rescue weak labels)
+                              datascout judge  ─── per-row LLM verdict ──▶
+                                          │       (axis question, optional rubric,
+                                          │        single / majority-of-3 /
+                                          │        unanimous-of-5, sha256-cached,
+                                          │        per-batch resumable)
+                                          ▼
+                              <corpus>/judged/   judged.jsonl
+                                                 judge.lock.yaml
+                                                 judge.report.md
+                                          │
+                                          ▼  - - (M10 standalone: any time)
+                              datascout eval  ─── precision/recall/F1 ──▶
+                                                  confusion + coverage
+                                                  vs --against gold
 ```
 
 Plain Python iterator pipeline. No DAG framework, no Celery, no Ray.
+Library is the source of truth — every verb is a `run_<verb>(ctx, ...)`
+function; CLI is a thin wrapper.
 
 ---
 

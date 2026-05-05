@@ -16,9 +16,11 @@ reframed and how, and what your candidate set is missing — then
 materializes a normalized, leakage-aware corpus with a defensible
 `recipe.lock.yaml`.
 
-It's **upstream of your detection workbench.** No labeling,
-no transformation into your downstream's native schema, no model
-training. Hand-off and get out of the way.
+It's **upstream of your detection workbench.** No transformation
+into your downstream's native schema, no model training. With M10 it
+adds *opt-in* label rescue for proxy / weakly-labeled rows under an
+LLM-as-judge — strictly audited, explicit gaps over guesses, and
+never the default. Hand-off and get out of the way.
 
 ---
 
@@ -168,10 +170,12 @@ snippet-pasteable usage for HF `datasets`, pandas, and raw JSONL.
 ## Documentation
 
 - **[Getting started](docs/getting-started.md)** — install, configure,
-  run the demo, run the loop end-to-end.
+  run the demo, run the loop end-to-end (now including the M10 judge
+  step in §11).
 - **[Concepts](docs/concepts.md)** — the mental model: discovery vs
   ranking, **how to write a brief**, the strategy taxonomy, label
-  kinds, modes, recipes / lockfiles.
+  kinds (including the M10 `judged` variant + explicit-gap promotion
+  rule), modes, recipes / lockfiles.
 - **[Configuration](docs/configuration.md)** — `ScoutContext`, Azure
   OpenAI + Entra setup (`az login`), HuggingFace tokens, every
   recognised env var.
@@ -180,6 +184,30 @@ snippet-pasteable usage for HF `datasets`, pandas, and raw JSONL.
   `sources`), every flag, with worked examples.
 - **[Architecture](docs/architecture.md)** — pipeline diagram, source
   plugin contract, probe protocol, mode detection, milestone status.
+- **[Judged corpus shape](docs/judged-corpus-shape.md)** — the stable
+  JSONL contract downstream consumers (e.g. protozoa-gym's
+  `scout_corpus` adapter) target. Documents every field, the M10
+  judge block, the `stable_id` format, and explicit non-features.
+
+---
+
+## Related projects
+
+dataset-scout is one piece of a three-tool ecosystem with a clean
+boundary. Each project ships and runs independently — they
+interoperate only via JSONL files and a published shape contract.
+
+| Project | Role | Relationship |
+|---|---|---|
+| **dataset-scout** *(this repo)* | Discover, reframe, curate, and (M10) rescue-label public datasets. Produces audit-ready JSONL corpora with full provenance. | Upstream of any eval workbench. |
+| **[protozoa-gym](https://github.com/mdressman/protozoa-gym)** | Eval orchestration for AISP detection enrichments. Ingests scout-produced corpora via its `protozoa_gym.sources.scout_corpus` adapter — see [`docs/judged-corpus-shape.md`](docs/judged-corpus-shape.md) for the spec. | Downstream consumer. Does not import dataset-scout; reads the JSONL contract. |
+| **[tribunal](https://github.com/mdressman/tribunal)** | Multi-agent LLM-as-judge framework for *output* evaluation (5 debate protocols, IPI/TOV consistency metrics, persona-typed judges). | Standalone library. Different question shape than scout's M10 judge: tribunal scores **candidate outputs**; scout's M10 classifies **dataset rows** for axis membership. Natural future engine for gym's eval-judge step. |
+
+The judge in dataset-scout (M10) is purpose-built for row
+classification ("is this row a positive instance of axis X?") and is
+deliberately small. The richer multi-agent judge orchestration lives
+in tribunal where it fits the question shape; scout consumes a
+~400-LOC purpose-built path instead.
 
 ---
 

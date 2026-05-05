@@ -89,12 +89,24 @@ once it lands.
 
 | Variable | What it overrides | Default (Linux/macOS) | Default (Windows) |
 |---|---|---|---|
-| `DATASET_SCOUT_CACHE_DIR` | SQLite cache (M1b) | `~/.cache/dataset-scout/` | `%LOCALAPPDATA%\dataset-scout\cache\` |
+| `DATASET_SCOUT_CACHE_DIR` | SQLite cache (M1b) and the M10 judge disk cache | `~/.cache/dataset-scout/` | `%LOCALAPPDATA%\dataset-scout\cache\` |
 | `DATASET_SCOUT_CONFIG_DIR` | Config TOML | `~/.config/dataset-scout/` | `%APPDATA%\dataset-scout\` |
 | `DATASET_SCOUT_OUT_DIR` | Default `--out` for `recon` | `./datascout-out/` | `.\datascout-out\` |
 
 XDG variables (`XDG_CACHE_HOME`, `XDG_CONFIG_HOME`) are honored on
 Unix when the explicit overrides aren't set.
+
+The M10 **judge disk cache** lives under
+`<DATASET_SCOUT_CACHE_DIR>/judge/<sha256>.json`, keyed by
+`sha256(prompt + axis + model + template_version)`. Cache hits skip
+the LLM call entirely and same-row + same-judge_version → byte-identical
+verdict. The cache is shared across runs and recipes within the same
+workspace. Bumping scout's internal `template_version` invalidates
+the cache deliberately — that's a scout-internal concern and is
+**not** coordinated with any other tool. See
+[`judged-corpus-shape.md`](judged-corpus-shape.md) for the public
+record-level surface; see `M10-judge-design.md` (in session-state)
+for the cache-key derivation detail.
 
 ---
 
