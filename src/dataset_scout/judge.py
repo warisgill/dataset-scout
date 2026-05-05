@@ -26,6 +26,7 @@ import secrets
 import statistics
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -707,9 +708,95 @@ def _eligible_for_judging(rec: NormalizedRecord, *, only_unknown: bool) -> bool:
     return True
 
 
+def _write_judge_lockfile(
+    path: Path,
+    *,
+    result: JudgeResult,
+    target: Path,
+    started_iso: str,
+) -> None:
+    """Emit the design-doc §4.3 lockfile slice for a judge run.
+
+    The output is YAML (matching curate's lockfile aesthetic) and lives
+    next to the judged corpus at ``<out_dir>/judge.lock.yaml``. It is
+    additive: re-running over an existing curate corpus does NOT alter
+    that corpus's ``recipe.lock.yaml``.
+    """
+    import yaml  # type: ignore[import-untyped]
+
+    payload: dict[str, Any] = {
+        "judge_template_version": JUDGE_TEMPLATE_VERSION,
+        "started_at": started_iso,
+        "elapsed_seconds": result.elapsed_seconds,
+        "target": str(target),
+        "out_dir": str(result.out_dir),
+        "judge": {
+            "axis": result.axis,
+            "rubric": result.rubric,
+            "model": result.model,
+            "template_version": result.template_version,
+            "n_judges": result.n_judges,
+            "agreement": result.agreement,
+            "threshold": result.threshold,
+            "cache_dir": str(result.cache_dir),
+            "calibration": result.calibration,
+            "stats": result.stats.as_dict(),
+        },
+        "failures": list(result.failures),
+        "files_written": [str(p) for p in result.files_written],
+    }
+    path.write_text(
+        yaml.safe_dump(payload, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+
+
+def _write_judge_report(path: Path, *, result: JudgeResult, target: Path) -> None:
+    """Emit a short markdown report next to the judged corpus."""
+    s = result.stats
+    lines: list[str] = [
+        f"# Judged corpus — axis `{result.axis}`",
+        "",
+        f"- **Source:** `{target}`",
+        f"- **Model:** `{result.model}` (template {result.template_version})",
+        f"- **Judges:** {result.n_judges} ({result.agreement} agreement)",
+        f"- **Threshold:** {result.threshold:.2f}",
+        f"- **Promoted positive:** {s.n_promoted_positive}",
+        f"- **Promoted negative:** {s.n_promoted_negative}",
+        f"- **Left unknown:** {s.n_left_unknown}",
+        f"- **Skipped (soft fail):** {s.n_skipped} "
+        f"(api={s.n_api_errors} · parse={s.n_parse_errors} · "
+        f"content_filter={s.n_content_filter_blocked})",
+        f"- **Cache hits:** {s.n_cache_hits} / {max(s.n_judged * result.n_judges, 1)}",
+        f"- **Wall-clock:** {result.elapsed_seconds:.2f}s",
+    ]
+    if result.calibration is not None:
+        c = result.calibration
+        lines += [
+            "",
+            "## Calibration",
+            "",
+            f"- **Against:** `{c.get('against')}`",
+            f"- **Sample size:** {c.get('n_sampled')}",
+            f"- **Precision:** {c.get('precision', 0.0):.3f}",
+            f"- **Recall:** {c.get('recall', 0.0):.3f}",
+            f"- **F1:** {c.get('f1', 0.0):.3f}",
+        ]
+    lines += [
+        "",
+        "---",
+        "",
+        "_Promotion rule: explicit gap. Rows with judge verdict "
+        "`positive` / `negative` at-or-above threshold are written with "
+        "`label_kind: judged`; lower-confidence verdicts attach the "
+        "JudgeBlock for review but keep the original label._",
+        "",
+    ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _run_calibration(
     *,
-    ctx: ScoutContext,
     gold: Path,
     axis: str,
     rubric: str | None,
@@ -862,6 +949,7 @@ def run_judge(
     import time
 
     started = time.monotonic()
+    started_iso = datetime.now(UTC).isoformat()
 
     if judges < 1:
         raise DatasetScoutError("judges must be >= 1")
@@ -901,7 +989,6 @@ def run_judge(
     if calibrate_against is not None and not dry_run:
         assert chat is not None
         calibration_block = _run_calibration(
-            ctx=ctx,
             gold=calibrate_against,
             axis=axis,
             rubric=rubric,
@@ -1022,7 +1109,7 @@ def run_judge(
         files_written.append(out_path)
 
     elapsed = time.monotonic() - started
-    return JudgeResult(
+    result = JudgeResult(
         out_dir=resolved_out,
         axis=axis,
         rubric=rubric,
@@ -1039,6 +1126,14 @@ def run_judge(
         estimated_calls=estimated_calls,
         calibration=calibration_block,
     )
+    _write_judge_lockfile(
+        resolved_out / "judge.lock.yaml",
+        result=result,
+        target=target,
+        started_iso=started_iso,
+    )
+    _write_judge_report(resolved_out / "judge.report.md", result=result, target=target)
+    return result
 
 
 __all__ = [

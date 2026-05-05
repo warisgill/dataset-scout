@@ -537,6 +537,28 @@ def test_promote_ambiguous_keeps_label() -> None:
     assert out.label_confidence == pytest.approx(0.99)
 
 
+def test_run_judge_writes_lockfile_and_report(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path)
+    target = _write_corpus(tmp_path / "corpus", [_row(text="t1", rid="r1")])
+    chat = _ScriptedChat(responses=[_payload("positive", 0.95)])
+    result = run_judge(ctx, target, axis="psych_harm", chat_client=chat)
+    lock_path = result.out_dir / "judge.lock.yaml"
+    report_path = result.out_dir / "judge.report.md"
+    assert lock_path.is_file()
+    assert report_path.is_file()
+    import yaml as _yaml
+
+    payload = _yaml.safe_load(lock_path.read_text(encoding="utf-8"))
+    assert payload["judge"]["axis"] == "psych_harm"
+    assert payload["judge"]["model"]
+    assert payload["judge"]["template_version"] == "1"
+    assert payload["judge"]["n_judges"] == 1
+    assert payload["judge"]["agreement"] == "single"
+    assert payload["judge"]["threshold"] == 0.8
+    assert payload["judge"]["stats"]["n_judged"] == 1
+    assert "psych_harm" in report_path.read_text(encoding="utf-8")
+
+
 # ─── calibration ────────────────────────────────────────────────────
 
 

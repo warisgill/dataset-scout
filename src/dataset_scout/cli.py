@@ -550,6 +550,185 @@ if __name__ == "__main__":  # pragma: no cover
     app()
 
 
+# ─── judge ──────────────────────────────────────────────────────────
+
+
+@app.command(help="Promote weak labels to high-confidence ones with an LLM judge.")
+def judge(
+    target: Annotated[
+        Path,
+        typer.Argument(
+            help=(
+                "Corpus directory (containing train/val/test.jsonl) or a single "
+                ".jsonl file produced by datascout curate."
+            ),
+        ),
+    ],
+    axis: Annotated[
+        str,
+        typer.Option("--axis", help="Labeling question, e.g. 'psych_harm'."),
+    ],
+    rubric: Annotated[
+        Path | None,
+        typer.Option(
+            "--rubric",
+            help="Optional rubric YAML / text file describing the axis in detail.",
+        ),
+    ] = None,
+    judges: Annotated[
+        int,
+        typer.Option(
+            "--judges",
+            min=1,
+            help="Number of independent judge calls per row. Default 1.",
+        ),
+    ] = 1,
+    agreement: Annotated[
+        str,
+        typer.Option(
+            "--agreement",
+            help="Multi-judge aggregation rule: single | majority | unanimous.",
+        ),
+    ] = "single",
+    threshold: Annotated[
+        float,
+        typer.Option(
+            "--threshold",
+            min=0.0,
+            max=1.0,
+            help="Promotion threshold on derived label_confidence. Default 0.8.",
+        ),
+    ] = 0.8,
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory. Defaults to <target>/judged/.",
+        ),
+    ] = None,
+    only_unknown: Annotated[
+        bool,
+        typer.Option(
+            "--only-unknown/--re-judge-all",
+            help=(
+                "Only judge rows that aren't already ground_truth or judged "
+                "(default), or re-judge every row."
+            ),
+        ),
+    ] = True,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Estimate the call count without invoking the LLM."),
+    ] = False,
+    calibrate_against: Annotated[
+        Path | None,
+        typer.Option(
+            "--calibrate-against",
+            help=(
+                "Gold corpus to sample for a calibration pass before the full run. "
+                "Reports P/R/F1 against ground_truth labels on the same axis."
+            ),
+        ),
+    ] = None,
+    calibration_seed_n: Annotated[
+        int,
+        typer.Option("--calibration-seed-n", min=1, help="Calibration sample size."),
+    ] = 100,
+    calibration_floor: Annotated[
+        float | None,
+        typer.Option(
+            "--calibration-floor",
+            min=0.0,
+            max=1.0,
+            help=(
+                "Required minimum calibrated precision. With this set, the run "
+                "aborts if calibration is below the floor unless --proceed."
+            ),
+        ),
+    ] = None,
+    proceed: Annotated[
+        bool,
+        typer.Option("--proceed", help="Override --calibration-floor."),
+    ] = False,
+) -> None:
+    from dataset_scout.context import ScoutContext
+    from dataset_scout.errors import DatasetScoutError, LLMError
+    from dataset_scout.judge import run_judge
+    from dataset_scout.render import render_judge_panel
+
+    if agreement not in ("single", "majority", "unanimous"):
+        err.print(
+            f"[red]error:[/red] --agreement must be one of single|majority|unanimous "
+            f"(got {agreement!r})"
+        )
+        raise typer.Exit(code=1)
+
+    rubric_text: str | None = None
+    if rubric is not None:
+        try:
+            rubric_text = rubric.read_text(encoding="utf-8")
+        except OSError as e:
+            err.print(f"[red]error:[/red] cannot read rubric file: {e}")
+            raise typer.Exit(code=1) from e
+
+    ctx = ScoutContext.from_env(is_tty=sys.stderr.isatty())
+
+    try:
+        result = run_judge(
+            ctx,
+            target,
+            axis=axis,
+            rubric=rubric_text,
+            judges=judges,
+            agreement=agreement,  # type: ignore[arg-type]
+            threshold=threshold,
+            out_dir=out,
+            only_unknown=only_unknown,
+            re_judge_all=not only_unknown,
+            dry_run=dry_run,
+            calibrate_against=calibrate_against,
+            calibration_seed_n=calibration_seed_n,
+            calibration_floor=calibration_floor,
+            proceed=proceed,
+        )
+    except (DatasetScoutError, LLMError) as e:
+        err.print(f"[red]error:[/red] {e}")
+        raise typer.Exit(code=1) from e
+
+    render_judge_panel(result, console=err)
+
+
+# ─── eval ───────────────────────────────────────────────────────────
+
+
+@app.command(name="eval", help="Score a judged corpus against a gold corpus.")
+def eval_(
+    judged: Annotated[Path, typer.Argument(help="Judged corpus directory or .jsonl file.")],
+    against: Annotated[
+        Path,
+        typer.Option(
+            "--against", help="Gold corpus directory or .jsonl file (ground_truth labels)."
+        ),
+    ],
+    axis: Annotated[
+        str | None,
+        typer.Option("--axis", help="Restrict scoring to a single axis."),
+    ] = None,
+) -> None:
+    from dataset_scout.context import ScoutContext
+    from dataset_scout.errors import DatasetScoutError
+    from dataset_scout.eval_ import run_eval
+    from dataset_scout.render import render_eval_panel
+
+    ctx = ScoutContext.from_env(is_tty=sys.stderr.isatty())
+    try:
+        result = run_eval(ctx, judged, gold=against, axis=axis)
+    except DatasetScoutError as e:
+        err.print(f"[red]error:[/red] {e}")
+        raise typer.Exit(code=1) from e
+    render_eval_panel(result, console=err)
+
+
 # ─── tour ───────────────────────────────────────────────────────────
 
 
@@ -572,3 +751,7 @@ def tour(
             f"[green]✔[/green] tour artefacts also written to {out} — "
             "open report.md / recipe.draft.yaml / decomposition.yaml to explore."
         )
+
+
+if __name__ == "__main__":  # pragma: no cover
+    app()

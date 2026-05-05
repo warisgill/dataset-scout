@@ -22,6 +22,24 @@ def test_root_help(runner: CliRunner):
     assert "recon" in result.stdout
     assert "inspect" in result.stdout
     assert "curate" in result.stdout
+    assert "judge" in result.stdout
+    assert "eval" in result.stdout
+
+
+def test_judge_help(runner: CliRunner):
+    result = runner.invoke(app, ["judge", "--help"], terminal_width=200)
+    assert result.exit_code == 0
+    out = result.output.replace("\n", " ")
+    assert "--axis" in out
+    assert "--judges" in out
+    assert "--threshold" in out
+
+
+def test_eval_help(runner: CliRunner):
+    result = runner.invoke(app, ["eval", "--help"], terminal_width=200)
+    assert result.exit_code == 0
+    out = result.output.replace("\n", " ")
+    assert "--against" in out
 
 
 def test_version(runner: CliRunner):

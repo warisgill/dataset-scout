@@ -11,10 +11,13 @@ from __future__ import annotations
 
 from dataset_scout.render.inspect_panel import render_inspect
 from dataset_scout.render.json_writer import write_results_json
+from dataset_scout.render.judge_panel import render_eval_panel, render_judge_panel
 from dataset_scout.render.markdown_report import render_recon_report, write_recon_report
 
 __all__ = [
+    "render_eval_panel",
     "render_inspect",
+    "render_judge_panel",
     "render_recon_report",
     "write_recon_report",
     "write_results_json",
