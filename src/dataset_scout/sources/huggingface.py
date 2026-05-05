@@ -176,18 +176,40 @@ def _build_search_query(intent: Intent) -> str:
 def _direction_queries(direction: DecompositionDirection) -> list[str]:
     """Build per-keyword HF lexical queries for a decomposition direction.
 
-    The LLM returns 3-5 short keywords per direction. HF's `search=` is
-    a substring match — joining them all into one phrase returns very
-    few hits because no single dataset card contains every term in
-    sequence. So issue one query per keyword and let the pipeline
-    dedupe across them.
+    The decomposer returns 3-5 short academic-style keywords per direction
+    in `direction.keywords`. The keyword-expansion stage (when AOAI is
+    available) also populates `direction.dataset_keywords` with HF-uploader-
+    style compound-noun phrases ("mental health chat", "counseling
+    dialogue") that complement the academic terms. Empirically these
+    expanded phrases catch datasets that the abstract keywords miss
+    entirely (uploaders don't write "parasocial bonds" in dataset ids).
 
-    Capped at 3 keywords per direction; the first ones tend to be the
-    most specific. Falls back to the direction name when the LLM
-    returns no keywords.
+    Strategy: prefer dataset_keywords (closer to how HF datasets are
+    named); fall back to keywords; union both with dedupe and cap at 5
+    so the per-recon HF query budget stays bounded.
+
+    Each phrase becomes its own HF `search=` query — substring matching
+    means that joining all phrases into one query returns near-zero hits
+    because no single dataset card contains every term in sequence.
+    Round-robin across queries lives upstream in `search()`.
     """
-    if direction.keywords:
-        return list(direction.keywords[:3])
+    pool: list[str] = []
+    seen: set[str] = set()
+    # HF-uploader-style first (typically higher-precision for datasets).
+    for kw in direction.dataset_keywords:
+        norm = kw.strip()
+        if norm and norm.lower() not in seen:
+            seen.add(norm.lower())
+            pool.append(norm)
+    # Then academic-style as fallback / breadth.
+    for kw in direction.keywords:
+        norm = kw.strip()
+        if norm and norm.lower() not in seen:
+            seen.add(norm.lower())
+            pool.append(norm)
+    if pool:
+        return pool[:7]
+    # No keywords at all; degrade to direction name.
     return [direction.name.replace("_", " ")]
 
 

@@ -91,6 +91,11 @@ class DecompositionDirection(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     threat_families: list[str] = Field(default_factory=list)
     expected_finds: str = ""
+    # Populated by the keyword-expansion stage: short HF-uploader-style
+    # compound-noun phrases ("mental health chat", "counseling dialogue")
+    # that complement the decomposer's academic-vocabulary keywords.
+    # When empty, sources fall back to `keywords`.
+    dataset_keywords: list[str] = Field(default_factory=list)
 
 
 # ─── Candidate metadata envelope ─────────────────────────────────────

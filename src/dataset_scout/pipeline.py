@@ -260,6 +260,28 @@ def run_recon(
     if not use_llm and not llm_runtime_error and directions_override is None:
         notices.append(METADATA_ONLY_NOTICE)
 
+    # ─── Keyword expansion (translates academic decomposition into ───
+    # HF-uploader-style compound nouns; one extra LLM call, cached).
+    # Empirically this is the difference between zero HF candidates and
+    # several genuinely-relevant ones for frontier-territory briefs:
+    # the decomposer thinks like a paper writer, but HF dataset
+    # uploaders use simple compound nouns ("mental health chat") that
+    # the academic decomposition never produces.
+    if use_llm and directions:
+        from dataset_scout.keyword_expansion import expand_dataset_keywords
+
+        _emit(ProgressEventKind.STAGE_STARTED, stage="keyword_expansion")
+        try:
+            directions = expand_dataset_keywords(intent, directions, ctx=ctx, cache=cache)
+        except Exception as exc:  # pragma: no cover - defensive
+            notices.append(f"keyword expansion skipped: {exc}")
+        n_with_expansions = sum(1 for d in directions if d.dataset_keywords)
+        _emit(
+            ProgressEventKind.STAGE_FINISHED,
+            stage="keyword_expansion",
+            message=f"expanded {n_with_expansions}/{len(directions)} direction(s)",
+        )
+
     if sources is None:
         sources = _build_sources(ctx)
     probes = probes if probes is not None else cheap_probes()

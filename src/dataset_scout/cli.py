@@ -29,7 +29,7 @@ warnings.filterwarnings("ignore", message=r".*Repo card metadata block was not f
 
 import sys  # noqa: E402  (intentional: env setdefault above must happen first)
 from pathlib import Path  # noqa: E402
-from typing import Annotated  # noqa: E402
+from typing import Annotated, Any  # noqa: E402
 
 import typer  # noqa: E402
 from rich.console import Console  # noqa: E402
@@ -144,7 +144,25 @@ def recon(
         bool,
         typer.Option(
             "--no-papers",
-            help="Skip the academic-paper discovery stage (NeurIPS / ICML / ICLR / SaTML).",
+            help="Skip the academic-paper discovery stage entirely.",
+        ),
+    ] = False,
+    venues: Annotated[
+        str | None,
+        typer.Option(
+            "--venues",
+            help=(
+                "Comma-separated venue list for paper discovery. "
+                "Defaults to NeurIPS,ICML,ICLR,SaTML,ACL,EMNLP,NAACL,arXiv. "
+                "Use --venues NeurIPS,ICML to narrow."
+            ),
+        ),
+    ] = None,
+    no_arxiv: Annotated[
+        bool,
+        typer.Option(
+            "--no-arxiv",
+            help="Exclude arXiv preprints from paper discovery (peer-reviewed only).",
         ),
     ] = False,
 ) -> None:
@@ -181,6 +199,38 @@ def recon(
             err.print(f"[red]error:[/red] failed to load decomposition: {e}")
             raise typer.Exit(code=1) from e
 
+    # Build the paper-search callable with the user's venue selection
+    # baked in (or False to disable entirely).
+    paper_search_fn: object
+    if no_papers:
+        paper_search_fn = False
+    elif venues is None and not no_arxiv:
+        paper_search_fn = None  # default behaviour
+    else:
+        from dataset_scout.paper_search import (
+            DEFAULT_VENUES,
+            find_papers_and_promote,
+        )
+
+        if venues:
+            selected_venues = tuple(v.strip() for v in venues.split(",") if v.strip())
+        else:
+            selected_venues = DEFAULT_VENUES
+        if no_arxiv:
+            selected_venues = tuple(v for v in selected_venues if v.lower() != "arxiv")
+        if not selected_venues:
+            err.print(
+                "[yellow]--venues / --no-arxiv combination produced an empty venue "
+                "list; skipping paper discovery.[/yellow]"
+            )
+            paper_search_fn = False
+        else:
+            def _ps(intent: Any, directions: Any, **kwargs: Any) -> Any:
+                kwargs.setdefault("venues", selected_venues)
+                return find_papers_and_promote(intent, directions, **kwargs)
+
+            paper_search_fn = _ps
+
     try:
         result = run_recon(
             brief,
@@ -188,7 +238,7 @@ def recon(
             parser_overrides=overrides,
             explore=not no_explore,
             directions_override=directions_override,
-            paper_search_fn=False if no_papers else None,
+            paper_search_fn=paper_search_fn,
         )
     except DatasetScoutError as e:
         err.print(f"[red]error:[/red] {e}")

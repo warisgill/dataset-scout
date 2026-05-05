@@ -109,6 +109,24 @@ _VENUE_ALIASES: dict[str, list[str]] = {
         "SaTML",
         "IEEE Conference on Secure and Trustworthy Machine Learning",
     ],
+    # NLP venues — added because chat / dialogue / counseling / safety
+    # corpora frequently land at NLP conferences before (or instead of)
+    # ML venues. NeurIPS-only filtering misses MentalChat16K-class work.
+    "ACL": [
+        "ACL",
+        "Annual Meeting of the Association for Computational Linguistics",
+    ],
+    "EMNLP": [
+        "EMNLP",
+        "Conference on Empirical Methods in Natural Language Processing",
+    ],
+    "NAACL": [
+        "NAACL",
+        "North American Chapter of the Association for Computational Linguistics",
+    ],
+    # arXiv preprints — much frontier AI-safety work lives here before
+    # any peer-reviewed venue. S2 indexes them with venue="arXiv.org".
+    "arXiv": ["arXiv.org"],
 }
 
 
@@ -119,7 +137,16 @@ _VENUE_CANONICAL: dict[str, str] = {
 }
 
 
-DEFAULT_VENUES: tuple[str, ...] = ("NeurIPS", "ICML", "ICLR", "SaTML")
+DEFAULT_VENUES: tuple[str, ...] = (
+    "NeurIPS",
+    "ICML",
+    "ICLR",
+    "SaTML",
+    "ACL",
+    "EMNLP",
+    "NAACL",
+    "arXiv",
+)
 
 
 def canonical_venue(raw: str) -> str:
@@ -459,12 +486,25 @@ def _fetch_one(
         "fields": _S2_FIELDS,
         "limit": str(_DEFAULT_LIMIT),
     }
-    try:
-        response = client.get(_S2_BULK_SEARCH, params=params, timeout=timeout_s)
-        response.raise_for_status()
-        payload = response.json()
-    except (httpx.HTTPError, ValueError) as exc:
-        _log.warning("paper search failed for query=%r: %s", query, exc)
+    payload: Any = None
+    for attempt in range(2):
+        try:
+            response = client.get(_S2_BULK_SEARCH, params=params, timeout=timeout_s)
+            if response.status_code == 429 and attempt == 0:
+                # S2 free tier rate-limits aggressively. Single short
+                # backoff and retry; if it fails again we give up
+                # silently (frontier work; non-blocking).
+                import time
+
+                time.sleep(2.0)
+                continue
+            response.raise_for_status()
+            payload = response.json()
+            break
+        except (httpx.HTTPError, ValueError) as exc:
+            _log.warning("paper search failed for query=%r: %s", query, exc)
+            return []
+    if payload is None:
         return []
 
     raw_data = payload.get("data") if isinstance(payload, dict) else None
