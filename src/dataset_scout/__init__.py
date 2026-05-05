@@ -105,6 +105,32 @@ def inspect(
     )
 
 
+def eval(
+    judged: str | Path,
+    *,
+    gold: str | Path,
+    axis: str | None = None,
+    ctx: ScoutContext | None = None,
+) -> object:
+    """Compare a judged corpus against a gold corpus (M10).
+
+    Reference: ``M10-judge-design.md`` §8. Returns an
+    :class:`dataset_scout.eval_.EvalResult` with per-axis P/R/F1 +
+    confusion matrix + coverage.
+    """
+    from pathlib import Path as _Path
+
+    from dataset_scout.context import ScoutContext as _Ctx
+    from dataset_scout.eval_ import run_eval
+
+    return run_eval(
+        ctx if ctx is not None else _Ctx.from_env(),
+        _Path(judged),
+        gold=_Path(gold),
+        axis=axis,
+    )
+
+
 def judge(
     target: str | Path,
     *,
@@ -208,6 +234,7 @@ __all__ = [
     "TransformSpec",
     "__version__",
     "curate",
+    "eval",
     "inspect",
     "judge",
     "recon",

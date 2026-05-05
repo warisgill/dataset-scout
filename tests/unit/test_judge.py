@@ -535,3 +535,84 @@ def test_promote_ambiguous_keeps_label() -> None:
     assert out.label_kind == LabelKind.PROXY
     assert out.judge is not None
     assert out.label_confidence == pytest.approx(0.99)
+
+
+# ─── calibration ────────────────────────────────────────────────────
+
+
+def test_calibration_records_metrics(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path)
+    gold_rows = [
+        _row(text="pos1", label="positive", label_kind=LabelKind.GROUND_TRUTH, rid="g1"),
+        _row(text="pos2", label="positive", label_kind=LabelKind.GROUND_TRUTH, rid="g2"),
+        _row(text="neg1", label="benign", label_kind=LabelKind.GROUND_TRUTH, rid="g3"),
+        _row(text="neg2", label="benign", label_kind=LabelKind.GROUND_TRUTH, rid="g4"),
+    ]
+    gold_dir = _write_corpus(tmp_path / "gold", gold_rows)
+    target = _write_corpus(tmp_path / "corpus", [_row(text="x", rid="rx")])
+    chat = _ScriptedChat(
+        by_text={
+            "pos1": _payload("positive", 0.95),
+            "pos2": _payload("positive", 0.95),
+            "neg1": _payload("negative", 0.95),
+            "neg2": _payload("negative", 0.95),
+            "x": _payload("ambiguous", 0.5),
+        }
+    )
+    result = run_judge(
+        ctx,
+        target,
+        axis="x",
+        chat_client=chat,
+        calibrate_against=gold_dir,
+        calibration_seed_n=10,
+        threshold=0.8,
+    )
+    assert result.calibration is not None
+    assert result.calibration["n_sampled"] == 4
+    assert result.calibration["precision"] == pytest.approx(1.0)
+    assert result.calibration["recall"] == pytest.approx(1.0)
+    assert result.calibration["f1"] == pytest.approx(1.0)
+
+
+def test_calibration_floor_blocks_run_without_proceed(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path)
+    gold_rows = [
+        _row(text="g1", label="positive", label_kind=LabelKind.GROUND_TRUTH, rid="g1"),
+        _row(text="g2", label="benign", label_kind=LabelKind.GROUND_TRUTH, rid="g2"),
+    ]
+    gold_dir = _write_corpus(tmp_path / "gold", gold_rows)
+    target = _write_corpus(tmp_path / "corpus", [_row(text="x", rid="rx")])
+    # Judge calls everything positive → precision = 0.5.
+    chat = _ScriptedChat(responses=[_payload("positive", 0.95)])
+    with pytest.raises(Exception, match="floor"):
+        run_judge(
+            ctx,
+            target,
+            axis="x",
+            chat_client=chat,
+            calibrate_against=gold_dir,
+            calibration_floor=0.9,
+        )
+
+
+def test_calibration_floor_proceed_overrides(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path)
+    gold_rows = [
+        _row(text="g1", label="positive", label_kind=LabelKind.GROUND_TRUTH, rid="g1"),
+        _row(text="g2", label="benign", label_kind=LabelKind.GROUND_TRUTH, rid="g2"),
+    ]
+    gold_dir = _write_corpus(tmp_path / "gold", gold_rows)
+    target = _write_corpus(tmp_path / "corpus", [_row(text="x", rid="rx")])
+    chat = _ScriptedChat(responses=[_payload("positive", 0.95)])
+    result = run_judge(
+        ctx,
+        target,
+        axis="x",
+        chat_client=chat,
+        calibrate_against=gold_dir,
+        calibration_floor=0.9,
+        proceed=True,
+    )
+    assert result.calibration is not None
+    assert result.calibration["precision"] == pytest.approx(0.5)

@@ -707,6 +707,117 @@ def _eligible_for_judging(rec: NormalizedRecord, *, only_unknown: bool) -> bool:
     return True
 
 
+def _run_calibration(
+    *,
+    ctx: ScoutContext,
+    gold: Path,
+    axis: str,
+    rubric: str | None,
+    judges: int,
+    agreement: Literal["single", "majority", "unanimous"],
+    threshold: float,
+    model_name: str,
+    cache_dir: Path,
+    chat_client: _ChatClient,
+    timeout_s: float,
+    seed_n: int,
+    seed: int,
+    floor: float | None,
+    proceed: bool,
+) -> dict[str, Any]:
+    """Sample ``seed_n`` ground-truth gold rows, judge them, and return a
+    calibration report (precision / recall / F1 / confusion).
+
+    Mirrors the shape recorded under ``judge.calibration`` in the
+    lockfile (design doc §4.3). Raises :class:`DatasetScoutError` when
+    ``floor`` is set, calibrated precision falls below it, and
+    ``proceed`` is False.
+    """
+    import random
+    from dataclasses import asdict
+
+    gold_rows: list[NormalizedRecord] = [
+        rec for rec in _iter_records_anywhere(gold) if rec.label_kind == LabelKind.GROUND_TRUTH
+    ]
+    if not gold_rows:
+        return {
+            "against": str(gold),
+            "seed_n": seed_n,
+            "n_sampled": 0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "coverage": 0.0,
+            "notes": ["no ground_truth rows found in gold corpus"],
+        }
+    rng = random.Random(seed)
+    sample = list(gold_rows) if len(gold_rows) <= seed_n else rng.sample(gold_rows, seed_n)
+    cm_tp = cm_fp = cm_fn = cm_tn = 0
+    n_promoted = 0
+    cal_stats = JudgeStats()
+    for rec in sample:
+        block, derived = _judge_one_record(
+            rec,
+            axis=axis,
+            rubric=rubric,
+            model=model_name,
+            template_version=JUDGE_TEMPLATE_VERSION,
+            judges=judges,
+            agreement_mode=agreement,
+            cache_dir=cache_dir,
+            chat_client=chat_client,
+            timeout_s=timeout_s,
+            stats=cal_stats,
+        )
+        if block is None:
+            continue
+        if not (block.verdict in ("positive", "negative") and derived >= threshold):
+            continue
+        n_promoted += 1
+        gold_class = "positive" if rec.label == "positive" else "negative"
+        judged_class = "positive" if block.verdict == "positive" else "negative"
+        if judged_class == "positive" and gold_class == "positive":
+            cm_tp += 1
+        elif judged_class == "positive":
+            cm_fp += 1
+        elif gold_class == "positive":
+            cm_fn += 1
+        else:
+            cm_tn += 1
+    precision = cm_tp / (cm_tp + cm_fp) if (cm_tp + cm_fp) else 0.0
+    recall = cm_tp / (cm_tp + cm_fn) if (cm_tp + cm_fn) else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+    block_payload = {
+        "against": str(gold),
+        "seed_n": seed_n,
+        "n_sampled": len(sample),
+        "n_promoted": n_promoted,
+        "precision": round(precision, 6),
+        "recall": round(recall, 6),
+        "f1": round(f1, 6),
+        "confusion": {
+            "true_positive": cm_tp,
+            "false_positive": cm_fp,
+            "false_negative": cm_fn,
+            "true_negative": cm_tn,
+        },
+        "stats": asdict(cal_stats) if False else cal_stats.as_dict(),
+        "threshold": threshold,
+    }
+    if floor is not None and precision < floor and not proceed:
+        raise DatasetScoutError(
+            f"calibrated precision {precision:.3f} < floor {floor:.3f}; "
+            "pass --proceed to override or refine the rubric."
+        )
+    return block_payload
+
+
+def _iter_records_anywhere(target: Path) -> Iterator[NormalizedRecord]:
+    """Helper: iterate records from a directory or single jsonl file."""
+    for p in _resolve_corpus_files(target):
+        yield from _iter_records(p)
+
+
 def run_judge(
     ctx: ScoutContext,
     target: Path,
@@ -725,6 +836,11 @@ def run_judge(
     batch_size: int = DEFAULT_BATCH_SIZE,
     chat_client: _ChatClient | None = None,
     progress: Callable[[int, int], None] | None = None,
+    calibrate_against: Path | None = None,
+    calibration_seed_n: int = 100,
+    calibration_floor: float | None = None,
+    proceed: bool = False,
+    calibration_seed: int = 1729,
 ) -> JudgeResult:
     """Run the LLM-as-judge label-rescue pass over a corpus.
 
@@ -780,6 +896,27 @@ def run_judge(
 
     only_unknown_eff = only_unknown and not re_judge_all
     chat = None if dry_run else _resolve_chat_client(ctx, chat_client)
+
+    calibration_block: dict[str, Any] | None = None
+    if calibrate_against is not None and not dry_run:
+        assert chat is not None
+        calibration_block = _run_calibration(
+            ctx=ctx,
+            gold=calibrate_against,
+            axis=axis,
+            rubric=rubric,
+            judges=judges,
+            agreement=agreement,
+            threshold=threshold,
+            model_name=model_name,
+            cache_dir=cache_dir,
+            chat_client=chat,
+            timeout_s=timeout_s,
+            seed_n=calibration_seed_n,
+            seed=calibration_seed,
+            floor=calibration_floor,
+            proceed=proceed,
+        )
 
     cp = _load_checkpoint(resolved_out, axis)
     stats.n_resumed = len(cp.completed_row_ids)
@@ -900,6 +1037,7 @@ def run_judge(
         elapsed_seconds=round(elapsed, 3),
         files_written=files_written,
         estimated_calls=estimated_calls,
+        calibration=calibration_block,
     )
 
 
