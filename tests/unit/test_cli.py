@@ -48,6 +48,64 @@ def test_version(runner: CliRunner):
     assert __version__ in result.stdout
 
 
+def test_render_help(runner: CliRunner):
+    result = runner.invoke(app, ["render", "--help"], terminal_width=200)
+    assert result.exit_code == 0
+    out = result.output.replace("\n", " ")
+    assert "results.json" in out
+    assert "--html-only" in out
+    assert "--md-only" in out
+
+
+def test_render_regenerates_reports_from_results_json(runner, tmp_path):
+    """Round-trip: write results.json from a tour result, then re-render."""
+    from dataset_scout.render import write_results_json
+    from dataset_scout.tour import build_tour_result
+
+    write_results_json(build_tour_result(), tmp_path)
+    assert (tmp_path / "results.json").exists()
+
+    # Remove any pre-existing reports so we know they are produced.
+    for name in ("report.html", "report.md"):
+        p = tmp_path / name
+        if p.exists():
+            p.unlink()
+
+    result = runner.invoke(app, ["render", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "report.html").exists()
+    assert (tmp_path / "report.md").exists()
+
+
+def test_render_html_only(runner, tmp_path):
+    from dataset_scout.render import write_results_json
+    from dataset_scout.tour import build_tour_result
+
+    write_results_json(build_tour_result(), tmp_path)
+    result = runner.invoke(app, ["render", str(tmp_path), "--html-only"])
+    assert result.exit_code == 0
+    assert (tmp_path / "report.html").exists()
+    assert not (tmp_path / "report.md").exists()
+
+
+def test_render_errors_when_results_missing(runner, tmp_path):
+    result = runner.invoke(app, ["render", str(tmp_path)])
+    assert result.exit_code == 2
+    assert "results.json" in result.output
+
+
+def test_render_rejects_conflicting_only_flags(runner, tmp_path):
+    from dataset_scout.render import write_results_json
+    from dataset_scout.tour import build_tour_result
+
+    write_results_json(build_tour_result(), tmp_path)
+    result = runner.invoke(
+        app, ["render", str(tmp_path), "--html-only", "--md-only"]
+    )
+    assert result.exit_code == 2
+    assert "mutually exclusive" in result.output
+
+
 @pytest.mark.parametrize(
     "argv",
     [

@@ -479,7 +479,66 @@ def decompose(
             )
 
 
-# ─── inspect ────────────────────────────────────────────────────────
+# ─── render ─────────────────────────────────────────────────────────
+
+
+@app.command(help="Re-render report.html and report.md from an existing results.json (no recon, no API calls).")
+def render(
+    out_dir: Annotated[
+        Path,
+        typer.Argument(
+            help="Recon output folder containing results.json (e.g. datascout-out/<run>).",
+        ),
+    ],
+    html_only: Annotated[
+        bool,
+        typer.Option("--html-only", help="Skip the Markdown report."),
+    ] = False,
+    md_only: Annotated[
+        bool,
+        typer.Option("--md-only", help="Skip the HTML report."),
+    ] = False,
+) -> None:
+    """Re-render reports from a previous recon's persisted results.
+
+    Useful for iterating on report styling (CSS, layout, copy) without
+    re-paying the LLM/HTTP cost of running recon. Reads
+    ``<out_dir>/results.json`` and rewrites ``report.html`` and
+    ``report.md`` in place.
+    """
+    import json
+
+    from dataset_scout.core import ReconResult
+    from dataset_scout.render import (
+        write_recon_report,
+        write_recon_report_html,
+    )
+
+    if html_only and md_only:
+        err.print("[red]error:[/red] --html-only and --md-only are mutually exclusive.")
+        raise typer.Exit(code=2)
+
+    results_path = out_dir / "results.json"
+    if not results_path.exists():
+        err.print(f"[red]error:[/red] {results_path} not found.")
+        raise typer.Exit(code=2)
+
+    try:
+        result = ReconResult.model_validate(
+            json.loads(results_path.read_text(encoding="utf-8"))
+        )
+    except (json.JSONDecodeError, ValueError) as exc:
+        err.print(f"[red]error:[/red] could not load {results_path}: {exc}")
+        raise typer.Exit(code=2) from exc
+
+    written: list[Path] = []
+    if not md_only:
+        written.append(write_recon_report_html(result, out_dir))
+    if not html_only:
+        written.append(write_recon_report(result, out_dir))
+
+    for path in written:
+        err.print(f"[green]✔[/green] {path}")
 
 
 @app.command(help="Deep-dive on one candidate.")

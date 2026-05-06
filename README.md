@@ -184,6 +184,9 @@ needs:
   Strictly audited; never the default.
 - **`datascout eval ./judged --against ./gold`** — score any judged
   corpus against any gold corpus.
+- **`datascout render <out_dir>`** — re-emit `report.html` / `report.md`
+  from an existing `results.json`. No recon, no API calls — useful for
+  iterating on report styling. `--html-only` / `--md-only` to skip one.
 
 See [`docs/cli.md`](docs/cli.md) for the full surface.
 
