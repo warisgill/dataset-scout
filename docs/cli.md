@@ -24,7 +24,7 @@ section of [architecture.md](architecture.md)).
 | [`judge`](#judge) | Promote weak labels to high-confidence ones with an LLM judge (M10) | 1 LLM call per non-ground-truth row × `--judges` |
 | [`eval`](#eval) | Score a judged corpus against gold (P/R/F1, confusion, coverage) | local |
 | [`compose`](#compose) | Merge multiple recipes into one | none — local |
-| [`cache`](#cache) | Inspect / prune / clear the cache | M1b — not yet implemented |
+| [`cache`](#cache) | Inspect / prune / clear the cache | local |
 | [`sources`](#sources) | List / toggle source plugins | local |
 
 ---
@@ -109,6 +109,18 @@ datascout recon "<brief>" [options]
 | `--min-strategy-confidence FLOAT` | `0.5` | Strategies below this confidence are filtered out of the draft recipe. Recipe-authoritative — `curate` defaults to the value baked into the recipe. |
 | `--decomposition-from PATH` | — | Reuse a hand-edited `decomposition.yaml` instead of paying for a fresh LLM decompose call. |
 | `--out PATH` | `datascout-out/` | Output directory. |
+| `--no-papers` | — | Skip paper search (Semantic Scholar + arXiv). |
+
+### Paper search
+
+By default, `recon` queries Semantic Scholar (NeurIPS / ICML / ICLR /
+SaTML and other venues) and extracts dataset URLs from paper abstracts.
+arXiv serves as a targeted fallback for named-benchmark queries when
+S2 is unavailable or throttled. HuggingFace and Kaggle URLs found in
+abstracts are promoted into the candidate pool with paper provenance;
+datasets on author sites or generic GitHub repos surface as citations
+only. If both S2 and arXiv fail, recon proceeds without the paper
+channel rather than blocking. Use `--no-papers` to skip entirely.
 
 ### Outputs
 
@@ -427,7 +439,7 @@ datascout curate --from programs/merged.yaml --out programs/corpus/
 
 ---
 
-## `cache` *(M1b — not yet implemented)*
+## `cache`
 
 Inspect and manage the SQLite cache.
 
@@ -445,8 +457,8 @@ List and toggle source plugins.
 
 ```bash
 datascout sources list             # works today: reflects current ScoutContext
-datascout sources enable <name>    # M1b: writes to ~/.config/dataset-scout/config.toml
-datascout sources disable <name>   # M1b
+datascout sources enable <name>    # not yet implemented
+datascout sources disable <name>   # not yet implemented
 ```
 
 ---

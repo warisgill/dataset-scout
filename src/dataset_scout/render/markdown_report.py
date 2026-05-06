@@ -282,9 +282,7 @@ def _render_candidate(
     # ─── Header ────────────────────────────────────────────────
     if verdict is not None:
         # New: verdict-led header.
-        buf.write(
-            f"### #{index} — {verdict.headline}  ·  `{cand.source}:{cand.id}`\n\n"
-        )
+        buf.write(f"### #{index} — {verdict.headline}  ·  `{cand.source}:{cand.id}`\n\n")
         if verdict.one_liner:
             buf.write(f"> {verdict.one_liner}\n\n")
     else:
@@ -561,9 +559,7 @@ def _safe_md(text: str | Evidence) -> str:
     return s
 
 
-def _render_papers_section(
-    buf: StringIO, result: ReconResult, ctx: ReconReportContext
-) -> None:
+def _render_papers_section(buf: StringIO, result: ReconResult, ctx: ReconReportContext) -> None:
     """Render the academic-paper discovery section.
 
     Listed in round-robin order from `paper_search`. Papers with explicit
@@ -574,12 +570,12 @@ def _render_papers_section(
     citations = ctx.n_paper_dataset_citations
     if citations > 0:
         buf.write(
-            f"{ctx.n_papers} paper(s) from NeurIPS / ICML / ICLR / SaTML "
+            f"{ctx.n_papers} paper(s) discovered, "
             f"with **{citations} dataset citation(s)** extracted from abstracts.\n\n"
         )
     else:
         buf.write(
-            f"{ctx.n_papers} paper(s) from NeurIPS / ICML / ICLR / SaTML. "
+            f"{ctx.n_papers} paper(s) discovered. "
             "No dataset URLs found in abstracts — read the paper to find "
             "the dataset directly.\n\n"
         )
@@ -590,11 +586,7 @@ def _render_papers_section(
 def _render_paper(buf: StringIO, p: PaperReference) -> None:
     venue = p.venue or "?"
     citations = f" · {p.citation_count} citation(s)" if p.citation_count else ""
-    surfaced = (
-        f"  - 🧭 *Surfaced by:* {', '.join(p.surfaced_by)}\n"
-        if p.surfaced_by
-        else ""
-    )
+    surfaced = f"  - 🧭 *Surfaced by:* {', '.join(p.surfaced_by)}\n" if p.surfaced_by else ""
     buf.write(f"### {p.title}\n\n")
     authors = ", ".join(p.authors[:5]) + ("…" if len(p.authors) > 5 else "")
     buf.write(f"- 👤 **Authors:** {authors or '(unknown)'}\n")

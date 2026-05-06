@@ -169,7 +169,8 @@ If you have extra time or someone digs in:
   has a multi-detection program. Mention as available.
 - **The full M10 judge / eval flow** — it's powerful but it's *not
   the wow*. Show only if asked.
-- **`cache` verb** — not yet implemented (next-up). Don't run it.
+- **`cache` sub-commands** — available but not interesting for a
+  demo. Mention as available if asked.
 - **The 7-kind strategy enum** — say "direct fit / reframing /
   proxy" three times and stop. The wire format has more nuance; the
   pitch doesn't need it.

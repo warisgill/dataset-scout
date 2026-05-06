@@ -50,6 +50,8 @@ _NAMESPACE_TTL_DEFAULTS: dict[str, float | None] = {
     "embedding": 30 * 24 * 3600.0,  # 30 days — embedding-model stable
     "hf_meta": 7 * 24 * 3600.0,  # 7 days
     "hf_sample": None,  # tied to (id, revision) — never expire
+    "papers": 14 * 24 * 3600.0,  # 14 days — re-check periodically for
+    # new preprints / freshly-indexed work
 }
 
 # Sentinel for "use the namespace default" in set(... ttl=...). Distinct
@@ -139,12 +141,8 @@ class Cache:
                 )
                 """
             )
-            cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_entries_expires ON entries(expires_at)"
-            )
-            cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_entries_created ON entries(created_at)"
-            )
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_entries_expires ON entries(expires_at)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_entries_created ON entries(created_at)")
             self._conn.commit()
 
     # ─── core ops ───────────────────────────────────────────────
@@ -241,8 +239,7 @@ class Cache:
             "FROM entries GROUP BY namespace ORDER BY namespace"
         )
         per_ns = [
-            {"namespace": ns, "entries": int(c), "bytes": int(b)}
-            for ns, c, b in cur.fetchall()
+            {"namespace": ns, "entries": int(c), "bytes": int(b)} for ns, c, b in cur.fetchall()
         ]
         return {
             "db_path": str(self.db_path),
@@ -269,9 +266,7 @@ class Cache:
             if namespace is None:
                 cur = self._conn.execute("DELETE FROM entries")
             else:
-                cur = self._conn.execute(
-                    "DELETE FROM entries WHERE namespace=?", (namespace,)
-                )
+                cur = self._conn.execute("DELETE FROM entries WHERE namespace=?", (namespace,))
             removed = cur.rowcount
             self._conn.commit()
         return int(removed or 0)

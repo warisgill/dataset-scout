@@ -484,6 +484,15 @@ resume on the next invocation. See
 
 ## 12. Honest limits
 
+- **Discovery is HuggingFace-lexical-bound.** A dataset whose card
+  text doesn't intersect your brief's keywords won't surface, even
+  if it's a perfect semantic fit. List well-known named benchmarks
+  in the brief — the decomposer turns them into proper-noun queries.
+  See [Concepts §9](concepts.md#9-how-to-write-a-brief).
+- **Recon assesses the top ~20 of ~100 candidates per axis.** The
+  cap protects an LLM-cost budget; the rest stay listed but
+  unassessed. When an axis comes back empty, sweep the unassessed
+  list before declaring a coverage gap.
 - **Strategy assessment is LLM-judgment**, not ground truth. Read
   the rationale and inspect samples before committing.
 - **Card metadata is uneven.** Licenses are sometimes wrong;
@@ -492,12 +501,9 @@ resume on the next invocation. See
 - **Recency alone means little.** "Uploaded yesterday" doesn't
   imply the data reflects today's threat surface.
 - **Reproducibility is contingent.** `recipe.lock.yaml` pins
-  revisions and content hashes. If upstreams delete the data, only
-  an archive (a future feature) makes the blend reproducible
-  standalone.
-- **`curate` is audit-ready.** MinHash dedup, leakage-aware splits,
-  filter DSL — all on by default. The lockfile records every
-  parameter. Read the report; trust but verify.
+  revisions and content hashes. If upstreams delete the data, the
+  blend won't be reproducible standalone — the lockfile pins
+  revisions but not contents.
 - **Judge verdicts are LLM-generated too.** The promotion rule is
   conservative (explicit-gap, threshold ≥ 0.8 by default), and
   `--calibrate-against` lets you measure precision against a real
@@ -516,7 +522,7 @@ resume on the next invocation. See
 - **[Configuration](configuration.md)** — env vars, paths,
   programmatic `ScoutContext`.
 - **[Architecture](architecture.md)** — pipeline, sources, probes,
-  milestone status.
+  capability status.
 
 Found a sharp edge? Open an issue. The honest limits list is fed by
 real friction; please add to it.

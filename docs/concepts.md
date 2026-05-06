@@ -14,9 +14,8 @@ folded into a single "quality" number.
 
 The reason is honesty. License + freshness + card-completeness say a
 lot about a dataset's polish but very little about whether it actually
-fits your detection task. Without a semantic-fit signal (embedding fit
-+ LLM strategy assessment, both later milestones), aggregating those
-into a fitness score would imply confidence we don't have.
+fits your detection task. Aggregating those into a fitness score
+would imply confidence the probes alone don't have.
 
 When the LLM strategy assessor runs (full mode) the framing changes:
 candidates carry per-strategy confidence, the report leads with the
@@ -45,8 +44,8 @@ See [`configuration.md`](configuration.md) for the env-var setup.
 
 ## 3. Sources, candidates, and metadata
 
-A `Source` plugin (HuggingFace today; Kaggle and Papers-With-Code in
-M1b) yields `Candidate` objects in response to an `Intent` plus a list
+A `Source` plugin (HuggingFace, Kaggle; Papers-With-Code not yet
+wired) yields `Candidate` objects in response to an `Intent` plus a list
 of `DecompositionDirection`s. Each candidate carries:
 
 - **Identity** — `source`, `id`, `revision`.
@@ -91,11 +90,10 @@ Every `SubScore` carries a status (`ok` / `not_applicable` /
 `low_confidence` / `skipped`), so probes that don't apply self-report
 rather than fabricating values.
 
-**Sample-driven probes** — `label_structure`, `schema_fingerprint`,
-plus the **embedding label-intent fit** — land in M1b once their
-inputs are available cheaply. Note that today's strategy assessor
-(see §5) already streams real rows for its own use, so the recipe
-draft is curate-ready without those probes shipping.
+The **embedding label-intent fit** stage runs between cheap probes
+and the shortlist; `label_structure` and `schema_fingerprint` are
+not yet wired. The recipe draft is curate-ready either way because
+the strategy assessor (§5) already streams real rows for its own use.
 
 ---
 
@@ -345,6 +343,15 @@ decomposer both work better on crisp briefs. If you're at 400+
 characters, you've probably described the detector instead of the
 dataset.
 
+### Named benchmarks
+
+Discovery is HuggingFace-lexical-bound: a dataset whose card text
+doesn't intersect your brief's keywords won't surface, even if it's
+a perfect semantic fit. If your construct has well-known named
+benchmarks (e.g. "OR-Bench", "XSTest", "TruthfulQA"), **list them
+in the brief** — the decomposer turns them into proper-noun queries
+that find the exact dataset even when the card text is sparse.
+
 ### Iterate cheaply
 
 Run `datascout decompose "<brief>"` first — ~5 seconds, one LLM call.
@@ -400,7 +407,7 @@ honest.
    │   coupling.                                                 │
    └─────────────────────────────────────────────────────────────┘
                               │
-                              ▼  (future M)
+                              ▼
    ┌─────────────────────────────────────────────────────────────┐
    │                          tribunal                           │
    │   (multi-agent LLM-as-judge framework — operates on         │

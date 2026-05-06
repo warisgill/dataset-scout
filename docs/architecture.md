@@ -29,7 +29,7 @@ DecompositionDirection × N
     │
     ▼
 Source.search(intent, directions, …)  → Candidate pool (deduped, surfaced_by)
-    │      (HF today; Kaggle / PWC in M1b)
+    │      (HF, Kaggle; paper URLs promoted via S2 + arXiv fallback)
     ▼
 Cheap probes (license, size, recency, freshness, languages, card_completeness)
     │
@@ -145,9 +145,9 @@ The library is the source of truth; the CLI is a thin wrapper.
 ```python
 from dataset_scout import (
     ScoutContext,
-    recon,                  # M2a (works in metadata-only when AOAI absent)
-    inspect,                # M3 — NotImplementedError
-    curate,                 # M4 — NotImplementedError
+    recon,
+    inspect,
+    curate,
 )
 
 ctx = ScoutContext.from_env()
@@ -159,7 +159,6 @@ result = recon("your brief here", ctx=ctx)
 
 Everything in the public surface is **Pydantic v2**, so JSON
 serialization, JSON Schema export, and round-trip validation are free.
-A future HTTP API is a thin wrapper over the library.
 
 ---
 
@@ -189,8 +188,8 @@ class Source(Protocol):
 ```
 
 Sources are registered via `pyproject.toml` `entry_points` in the
-`dataset_scout.sources` group. The HF source is wired today; Kaggle
-and PWC entries exist commented out and light up in M1b.
+`dataset_scout.sources` group. HuggingFace and Kaggle sources are
+wired today. A PWC entry-point hook is reserved but not yet wired.
 
 Crucially, every source plugin populates the **same**
 `CandidateMetadata` envelope. Probes never read source-specific keys.
@@ -210,10 +209,12 @@ class Probe(Protocol):
 Probes are stateless and parallelizable. The version field anchors
 future cache keys: `(candidate.revision, probe.version, intent.stable_hash())`.
 
-The six **cheap** probes shipping today consume only
-`CandidateMetadata` (no row sampling). **Sample-driven** probes
-(`label_structure`, `schema_fingerprint`, embedding label-intent fit)
-land with `Source.stream_sample()` in M1b.
+The six **cheap** probes consume only `CandidateMetadata` (no row
+sampling). The **embedding label-intent fit** stage runs as a
+dedicated step between cheap probes and the shortlist — it embeds
+intent + candidate text via `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` and
+writes `Scorecard.label_intent_fit`. `label_structure` and
+`schema_fingerprint` are not yet wired.
 
 ---
 
@@ -259,7 +260,7 @@ HTTP API forwards them as SSE / WebSocket frames. Same code path.
 
 ---
 
-## 8. Cache *(M1b)*
+## 8. Cache
 
 SQLite WAL at `~/.cache/dataset-scout/cache.db`, single-writer file
 lock, LRU eviction at 2 GB default cap. Key namespaces:
@@ -274,8 +275,8 @@ decompose:{intent_hash}:{decomposer_v}
 coverage:{intent_hash}:{candidate_set_hash}:{coverage_v}
 ```
 
-`Intent.stable_hash()` already exists today; cache wrapping is
-mechanical when M1b lands.
+`Intent.stable_hash()` already exists today; the key scheme is
+straightforward to extend when new call sites are added.
 
 ---
 
@@ -295,20 +296,17 @@ prompts are **snapshot-tested** — drift surfaces as a PR diff.
 
 ---
 
-## 10. Status & roadmap
-
-The product surface is feature-complete for its core loop: **brief →
-recon → curate**. Below is the honest state.
+## 10. Status
 
 ### Shipped
 
 | Capability | What's in |
 |---|---|
 | **Discovery (dataset platforms)** | HuggingFace + Kaggle source plugins, 6 metadata-driven probes, deduplicated multi-source candidate pool, `surfaced_by` provenance. Kaggle is discovery-only — `stream_sample`/`stream_rows` raise `SourceUnsupportedError` and curate classifies the candidate under `unsupported_source` with a hint. |
-| **Discovery (academic papers)** | Pipeline stage (not a Source plugin — papers ≠ datasets) querying Semantic Scholar across NeurIPS / ICML / ICLR / SaTML. Round-robin per-direction queries, regex extraction of HF/Kaggle/GitHub dataset URLs from abstracts, deduped + capped at 12 papers per recon. Cited HF / Kaggle datasets are promoted into the candidate pool with `surfaced_by` carrying the paper id; existing strategy / coverage flow then runs over them. CLI: `--no-papers` opts out. Cached per `(venue-set, year-range, query)`. |
+| **Discovery (academic papers)** | Pipeline stage querying Semantic Scholar across NeurIPS / ICML / ICLR / SaTML, with arXiv as a targeted fallback for named-benchmark queries when S2 is unavailable or throttled. Round-robin per-direction queries, regex extraction of HF/Kaggle/GitHub dataset URLs from abstracts, deduplicated by arXiv ID, capped at 12 papers per recon. Cited HF / Kaggle datasets are promoted into the candidate pool with `surfaced_by` carrying the paper id. CLI: `--no-papers` opts out. Cached per `(venue-set, year-range, query)`. |
 | **Cache** | SQLite WAL at `<ctx.cache_dir>/cache.db`. Namespace-scoped TTL defaults with per-call override; age-based eviction at a 2 GB cap (`DATASET_SCOUT_CACHE_MAX_BYTES`); read paths never write. Wraps decompose, strategy, embedding, and paper-search calls. CLI: `datascout cache info\|prune\|clear`. |
 | **LLM decomposition** | Azure OpenAI / Entra. Brief → 3–7 adjacent search directions. Reusable via `--decomposition-from` for cheap iteration. Cached. Mode-detection falls back to metadata-only with an explicit notice when AOAI is absent. |
-| **Row-aware strategy assessor** | For each shortlisted candidate: stream 8 real rows → LLM call → 1–4 ranked strategies from the 7-kind taxonomy with rationale, caveats, and a transform spec referencing **actual** columns and label values. Cached. |
+| **Row-aware strategy assessor** | Shortlists the top ~20 candidates per axis (LLM-cost budget); remaining candidates stay in the pool but are unassessed. For each shortlisted candidate: stream 8 real rows → LLM call → 1–4 ranked strategies from the 7-kind taxonomy with rationale, caveats, and a transform spec referencing **actual** columns and label values. Cached. |
 | **Embedding label-intent fit** | Dedicated pipeline stage between probes and the assessor. Embeds intent text + a deterministic candidate text (description + canonical row sample) via Azure OpenAI embeddings (`AZURE_OPENAI_EMBEDDING_DEPLOYMENT`). Writes `Scorecard.label_intent_fit`. Cached per text hash; the intent embedding is reused across candidates. |
 | **Coverage-gap report** | What no candidate covers and where to source it. Leads `report.md`/`report.html` when notable. |
 | **Reports** | `report.md` (audit-friendly Markdown) and `report.html` (self-contained HTML, embedded CSS, color-coded strategy badges, no JS) rendered from a shared `ReconReportContext` view-model so the two can't drift. |
@@ -318,22 +316,18 @@ recon → curate**. Below is the honest state.
 | **`judge` + `eval`** | Opt-in LLM-as-judge label rescue with sha256-cached verdicts, per-batch resumable checkpoint, multi-judge agreement, explicit-gap promotion, calibration mode with precision floor. Standalone `eval` against any gold corpus. |
 | **`compose`** | Merge multiple recipes for shared multi-detection corpora. |
 
-### Considering
+**Paper discovery limits.** Only datasets with a HuggingFace or
+Kaggle URL in the abstract are promoted to candidates. Datasets on
+author sites or generic GitHub repos surface as paper citations but
+stop there — verify those manually. Semantic Scholar rate-limits
+under parallel runs; arXiv falls back as a second source for
+named-benchmark queries; if both fail, recon proceeds without the
+paper channel rather than blocking.
 
-- **`--watch`/re-validate mode.** Re-check a `recipe.lock.yaml`
-  against current upstream revisions: *"has anything I depend on
-  moved?"*
-- **Archive option.** Pin contents (not just revisions) so a corpus
-  is reproducible even if upstream deletes the data.
-
-### Deferred
-
-- **Lineage DAG + resumable-operation envelope.** Engineering
-  cleanup with no user request behind it. Revisit when somebody asks.
-- **Multi-candidate portfolio assessor + the `composition_only` 8th
-  strategy kind.** Clever, not yet earned.
-- **Papers-with-Code source plugin.** Entry-point hook reserved; not
-  yet wired.
+**Assessor scope.** The shortlist caps at ~20 candidates per axis.
+The remaining candidates stay in the pool but are unassessed. When
+an axis comes back empty, sweep the full candidate list before
+declaring a coverage gap.
 
 ---
 

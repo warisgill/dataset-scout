@@ -15,20 +15,10 @@
 ---
 
 ML practitioners spend hours hand-searching HuggingFace for datasets
-that fit their problem — and then second-guessing whether the creative
-reframings they have in mind would actually hold up. `dataset-scout`
-automates that loop:
-
-1. Reads your brief and **expands it into adjacent search directions**
-   an LLM proposes.
-2. Pulls real candidates and **samples actual rows** before judging fit.
-3. Tells you, with rationale, **which datasets fit directly**, **which
-   can be reframed and how**, and **what's missing**.
-4. Hands you a normalized JSONL corpus with leakage-aware splits and a
-   `recipe.lock.yaml` you can show a reviewer.
-
-Every claim points back at a card, a column, a sample row.
-You stay in the loop.
+that fit a problem — then second-guessing whether the creative
+reframings they have in mind actually hold up. `dataset-scout` runs
+that loop for you and hands back a curated corpus with receipts:
+every claim ties back to a card, a column, and a sample row.
 
 ---
 
@@ -81,42 +71,30 @@ a deterministic fingerprint, and ready-to-paste snippets for HF
 
 ---
 
-## What makes it click
+## Why scout
 
-**Three things that turn a 4-hour HF safari into a coffee break:**
+Three things you don't get from a tab full of HuggingFace search
+results:
 
-1. **Reframings, not just matches.** The LLM doesn't just return
-   keyword hits. For each candidate it proposes 1–4 ranked strategies
-   — *direct fit*, *reframe these labels*, *use as a hard-negative
-   distribution*, *signal proxy* — with confidence, written rationale,
-   caveats, and a concrete transform spec. For a novel brief it's
-   normal to see *zero* direct fits and a stack of defensible
-   reframings instead. That's the value.
+1. **Reframings, not just matches.** Each candidate gets ranked
+   strategies — *direct fit*, *subset extraction*, *signal proxy*,
+   *benign baseline* — with rationale, caveats, and a transform
+   spec. On novel briefs the typical shape is zero direct fits plus
+   a defensible stack of reframings, and that's the deliverable.
 
-2. **Recipes are real, straight from recon.** The strategy assessor
-   streams 8 actual rows per candidate before producing its transform,
-   so `recipe.draft.yaml` references **real column names** and **real
-   label values** — not `prompt_and_response_or_equivalent`
-   placeholders. Brief → recon → curate → tens of thousands of rows
-   on disk in minutes, no column-name whack-a-mole.
+2. **Recipes ship `curate`-ready.** Strategy assessment reads actual
+   rows before writing the transform, so `recipe.draft.yaml` carries
+   real column names and label values — no placeholder
+   whack-a-mole between recon and corpus.
 
-3. **A coverage-gap report = a sourcing roadmap.** When your brief
-   pushes into novel territory, the report leads with what's *missing*
-   across all the candidates and where to go look (*"nothing covers
-   Markdown-specific cloaking; consider Common Crawl + Wayback for
-   cloaking-temporal data"*). Sparse coverage is a first-class
-   outcome, not a failure — and the deliverable, when it happens.
+3. **Coverage gaps are first-class output.** When the data isn't
+   there, scout leads with what's missing and where to look next.
+   Sparse coverage is a deliverable, not a failure.
 
-**Plus academic paper mining** as a fourth discovery channel: relevant
-papers from **NeurIPS, ICML, ICLR, and SaTML** are surfaced in their
-own report section, and any HuggingFace or Kaggle dataset URLs found
-in their abstracts are *promoted into the candidate pool* with paper
-provenance — so a dataset cited in a recent NeurIPS paper shows up
-beside the HF search hits with the citation as its `surfaced_by`.
-
-The output is upstream of your training and eval workbenches. No
-transformation into anyone's downstream schema, no model training.
-Hand-off and get out of the way.
+Discovery spans HuggingFace, Kaggle, and academic papers from
+NeurIPS / ICML / ICLR / SaTML and other venues — HF/Kaggle URLs
+found in paper abstracts are promoted into the candidate pool with
+paper provenance.
 
 ---
 
@@ -211,31 +189,6 @@ See [`docs/cli.md`](docs/cli.md) for the full surface.
 
 ---
 
-## Roadmap
-
-| | Status |
-|---|---|
-| Discovery + cheap probes (HuggingFace) | ✅ shipped |
-| LLM decomposition + multi-direction search | ✅ shipped |
-| Row-aware strategy assessor + coverage gaps | ✅ shipped |
-| `inspect` deep-dive | ✅ shipped |
-| `curate` (audit-ready: dedup + leakage-aware splits + filter DSL + soft failures) | ✅ shipped |
-| `judge` + `eval` (opt-in LLM-as-judge label rescue) | ✅ shipped |
-| **Cache** (SQLite WAL, age-based eviction, namespace-scoped TTLs) | ✅ shipped |
-| **Embedding label-intent fit** (Azure OpenAI embeddings, cached) | ✅ shipped |
-| **Kaggle source plugin** (discovery-only) | ✅ shipped |
-| **HTML report alongside markdown** | ✅ shipped |
-| **Academic paper discovery** (NeurIPS / ICML / ICLR / SaTML via Semantic Scholar; abstract URL extraction; promotes cited HF/Kaggle datasets to candidates with paper provenance) | ✅ shipped |
-| `--watch` / re-validate mode against upstream revisions | considering |
-| Archive option for offline-reproducible corpora | considering |
-| Lineage DAG, resumable-operation envelope, multi-candidate portfolio assessor | deferred until requested |
-
-The core loop — **brief → recon → curate** — is feature-complete with
-caching, semantic-fit signal, multi-source discovery, paper-citation
-mining, and reviewer-friendly output.
-
----
-
 ## Related projects
 
 dataset-scout is one piece of a small toolkit, but it ships and runs
@@ -258,9 +211,28 @@ contracts — no shared package, no Python-level dependencies.
 
 - **Strategy assessment is LLM judgment, not ground truth.** Inspect
   samples before committing.
-- **Card metadata is uneven.** License fields are sometimes missing or
-  wrong; `language:` is often absent. We surface what's there and mark
-  what isn't — no fabrication.
+- **Discovery is HuggingFace-lexical-bound.** A dataset whose card
+  text doesn't intersect the brief's keywords (or a decomposition
+  direction's recalled names) won't surface, even if it's a
+  semantically perfect fit. If your construct has well-known named
+  benchmarks, list them in the brief — the decomposer turns them
+  into proper-noun queries.
+- **Recon assesses the top ~20 of ~100 candidates per axis.** That
+  cap protects an LLM-cost budget; the rest stay listed but
+  unassessed. When an axis comes back empty, sweep the unassessed
+  list before declaring a coverage gap.
+- **Paper-only datasets (no HF/Kaggle home) won't auto-promote to
+  candidates.** Scout extracts dataset references from paper
+  abstracts but only promotes ones with a HuggingFace or Kaggle URL.
+  Datasets hosted on author sites or generic GitHub repos surface
+  as paper citations but stop there — verify those manually.
+- **Paper search is rate-limited.** Semantic Scholar throttles under
+  parallel runs; arXiv falls back as a targeted second source for
+  named-benchmark queries. If both fail, recon proceeds without the
+  paper channel rather than blocking.
+- **Card metadata is uneven.** License fields are sometimes missing
+  or wrong; `language:` is often absent. We surface what's there and
+  mark what isn't — no fabrication.
 - **Recency alone means little.** "Uploaded yesterday" doesn't imply
   the data reflects today's threat surface.
 - **Reproducibility is contingent.** `recipe.lock.yaml` pins revisions

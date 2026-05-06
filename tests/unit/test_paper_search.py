@@ -31,12 +31,8 @@ def test_canonical_venue_short_form_passthrough():
 def test_canonical_venue_long_form_normalised():
     assert canonical_venue("Neural Information Processing Systems") == "NeurIPS"
     assert canonical_venue("International Conference on Machine Learning") == "ICML"
-    assert canonical_venue(
-        "International Conference on Learning Representations"
-    ) == "ICLR"
-    assert canonical_venue(
-        "IEEE Conference on Secure and Trustworthy Machine Learning"
-    ) == "SaTML"
+    assert canonical_venue("International Conference on Learning Representations") == "ICLR"
+    assert canonical_venue("IEEE Conference on Secure and Trustworthy Machine Learning") == "SaTML"
 
 
 def test_canonical_venue_unknown_returns_raw():
@@ -170,9 +166,7 @@ def test_find_papers_returns_normalised_results():
                     _s2_paper(
                         "p1",
                         "On Toxicity",
-                        abstract=(
-                            "We evaluate on https://huggingface.co/datasets/alice/tox."
-                        ),
+                        abstract=("We evaluate on https://huggingface.co/datasets/alice/tox."),
                     )
                 ],
             },
@@ -204,11 +198,7 @@ def test_find_papers_no_dataset_citations_yields_no_candidates():
     respx.get("https://api.semanticscholar.org/graph/v1/paper/search/bulk").mock(
         return_value=httpx.Response(
             200,
-            json={
-                "data": [
-                    _s2_paper("p1", "Methods Paper", abstract="No dataset URLs here.")
-                ]
-            },
+            json={"data": [_s2_paper("p1", "Methods Paper", abstract="No dataset URLs here.")]},
         )
     )
     papers, candidates = find_papers_and_promote(
@@ -510,11 +500,7 @@ def test_pipeline_merges_paper_provenance_on_existing_candidate():
         venue="NeurIPS",
         year=2024,
         url="u",
-        referenced_datasets=[
-            ExtractedDataset(
-                source="huggingface", identifier="alice/x", url="x"
-            )
-        ],
+        referenced_datasets=[ExtractedDataset(source="huggingface", identifier="alice/x", url="x")],
     )
 
     def fake_search(intent, directions, **kwargs):
@@ -533,3 +519,325 @@ def test_pipeline_merges_paper_provenance_on_existing_candidate():
     sc = result.candidates[0]
     assert sc.candidate.id == "alice/x"
     assert any("paper:" in s for s in sc.candidate.surfaced_by)
+
+
+# ─── HTTP retry helper ─────────────────────────────────────────────
+
+
+@respx.mock
+def test_http_get_with_retry_honors_retry_after(monkeypatch):
+    """Retry-After header (seconds form) takes precedence over backoff."""
+    from dataset_scout.paper_search import http_get_with_retry
+
+    sleeps: list[float] = []
+    monkeypatch.setattr("dataset_scout.paper_search.time.sleep", lambda s: sleeps.append(s))
+
+    responses = iter(
+        [
+            httpx.Response(429, headers={"Retry-After": "5"}),
+            httpx.Response(200, json={"ok": True}),
+        ]
+    )
+    respx.get("https://example.com/x").mock(side_effect=lambda req: next(responses))
+    resp = http_get_with_retry(
+        httpx.Client(timeout=5.0),
+        "https://example.com/x",
+        timeout_s=5.0,
+        label="test",
+    )
+    assert resp is not None
+    assert resp.status_code == 200
+    # Honored the header, not the exponential default.
+    assert sleeps == [5.0]
+
+
+@respx.mock
+def test_http_get_with_retry_exponential_backoff(monkeypatch):
+    """Without Retry-After, sleep grows: 2 + jitter, then 4 + jitter."""
+    from dataset_scout.paper_search import http_get_with_retry
+
+    sleeps: list[float] = []
+    monkeypatch.setattr("dataset_scout.paper_search.time.sleep", lambda s: sleeps.append(s))
+    monkeypatch.setattr("dataset_scout.paper_search.random.uniform", lambda a, b: 0.0)
+
+    responses = iter(
+        [
+            httpx.Response(429),
+            httpx.Response(429),
+            httpx.Response(200, json={"ok": True}),
+        ]
+    )
+    respx.get("https://example.com/x").mock(side_effect=lambda req: next(responses))
+    resp = http_get_with_retry(
+        httpx.Client(timeout=5.0),
+        "https://example.com/x",
+        timeout_s=5.0,
+        label="test",
+    )
+    assert resp is not None
+    # base=2.0, attempt=0 -> 2.0; attempt=1 -> 4.0
+    assert sleeps == [2.0, 4.0]
+
+
+@respx.mock
+def test_http_get_with_retry_gives_up_after_max_attempts(monkeypatch):
+    """Persistent 429 returns None without raising."""
+    from dataset_scout.paper_search import http_get_with_retry
+
+    monkeypatch.setattr("dataset_scout.paper_search.time.sleep", lambda s: None)
+    respx.get("https://example.com/x").mock(return_value=httpx.Response(429))
+    resp = http_get_with_retry(
+        httpx.Client(timeout=5.0),
+        "https://example.com/x",
+        timeout_s=5.0,
+        label="test",
+        max_attempts=3,
+    )
+    assert resp is None
+
+
+@respx.mock
+def test_http_get_with_retry_caps_at_max_wait(monkeypatch):
+    """Exponential growth is capped at max_wait."""
+    from dataset_scout.paper_search import http_get_with_retry
+
+    sleeps: list[float] = []
+    monkeypatch.setattr("dataset_scout.paper_search.time.sleep", lambda s: sleeps.append(s))
+    monkeypatch.setattr("dataset_scout.paper_search.random.uniform", lambda a, b: 0.0)
+
+    responses = iter(
+        [
+            httpx.Response(429),
+            httpx.Response(429),
+            httpx.Response(429),
+            httpx.Response(200, json={"ok": True}),
+        ]
+    )
+    respx.get("https://example.com/x").mock(side_effect=lambda req: next(responses))
+    http_get_with_retry(
+        httpx.Client(timeout=5.0),
+        "https://example.com/x",
+        timeout_s=5.0,
+        label="test",
+        base_wait=10.0,
+        max_wait=15.0,
+        max_attempts=4,
+    )
+    # 10.0, 20.0->capped to 15.0, 40.0->capped to 15.0
+    assert sleeps == [10.0, 15.0, 15.0]
+
+
+# ─── arxiv_id extraction (S2 side) ────────────────────────────────
+
+
+def test_normalise_arxiv_id_strips_version_suffix():
+    from dataset_scout.paper_search import _normalise_arxiv_id
+
+    assert _normalise_arxiv_id("2401.12345") == "2401.12345"
+    assert _normalise_arxiv_id("2401.12345v1") == "2401.12345"
+    assert _normalise_arxiv_id("2401.12345v12") == "2401.12345"
+    # Old-style category prefix: cs.CL/0501001
+    assert _normalise_arxiv_id("cs.CL/0501001v3") == "cs.CL/0501001"
+
+
+def test_extract_s2_arxiv_id_from_external_ids():
+    from dataset_scout.paper_search import _extract_s2_arxiv_id
+
+    assert _extract_s2_arxiv_id({"externalIds": {"ArXiv": "2401.12345"}}) == "2401.12345"
+    assert _extract_s2_arxiv_id({"externalIds": {"ArXiv": "2401.12345v2"}}) == "2401.12345"
+    assert _extract_s2_arxiv_id({"externalIds": {}}) is None
+    assert _extract_s2_arxiv_id({}) is None
+    assert _extract_s2_arxiv_id({"externalIds": {"ArXiv": ""}}) is None
+
+
+# ─── cross-backend dedupe ─────────────────────────────────────────
+
+
+def test_round_robin_dedupe_collapses_by_arxiv_id_across_backends():
+    """A paper from S2 and arXiv with the same arxiv_id collapses to one."""
+    from dataset_scout.core import PaperReference
+    from dataset_scout.paper_search import _round_robin_dedupe
+
+    s2_paper = PaperReference(
+        paper_id="s2-opaque-id",
+        title="Shared Paper",
+        venue="NeurIPS",
+        year=2024,
+        url="https://semanticscholar.org/paper/s2-opaque-id",
+        arxiv_id="2401.12345",
+        surfaced_by=["d1"],
+    )
+    arxiv_paper = PaperReference(
+        paper_id="arxiv:2401.12345",
+        title="Shared Paper",
+        venue="arXiv",
+        year=2024,
+        url="https://arxiv.org/abs/2401.12345",
+        arxiv_id="2401.12345",
+        surfaced_by=["d1-arxiv-fallback"],
+    )
+
+    deduped = _round_robin_dedupe(
+        [[s2_paper], [arxiv_paper]],
+        cap=10,
+    )
+    assert len(deduped) == 1
+    # First-seen wins for the primary entry.
+    assert deduped[0].paper_id == "s2-opaque-id"
+    # surfaced_by from both backends merged.
+    assert "d1" in deduped[0].surfaced_by
+    assert "d1-arxiv-fallback" in deduped[0].surfaced_by
+
+
+def test_round_robin_dedupe_keeps_distinct_papers_without_arxiv_id():
+    """No arxiv_id, distinct paper_id -> two entries."""
+    from dataset_scout.core import PaperReference
+    from dataset_scout.paper_search import _round_robin_dedupe
+
+    a = PaperReference(
+        paper_id="a",
+        title="A",
+        venue="x",
+        year=2024,
+        url="u",
+    )
+    b = PaperReference(
+        paper_id="b",
+        title="B",
+        venue="x",
+        year=2024,
+        url="u",
+    )
+    out = _round_robin_dedupe([[a], [b]], cap=10)
+    assert {p.paper_id for p in out} == {"a", "b"}
+
+
+def test_round_robin_dedupe_merges_referenced_datasets_on_collapse():
+    """When two backends carry different dataset URLs for the same paper, union them."""
+    from dataset_scout.core import (
+        ExtractedDataset,
+        PaperReference,
+    )
+    from dataset_scout.paper_search import _round_robin_dedupe
+
+    s2 = PaperReference(
+        paper_id="s2",
+        title="P",
+        venue="NeurIPS",
+        year=2024,
+        url="u",
+        arxiv_id="2401.1",
+        referenced_datasets=[
+            ExtractedDataset(source="huggingface", identifier="a/b", url="hf://a/b")
+        ],
+    )
+    arx = PaperReference(
+        paper_id="arxiv:2401.1",
+        title="P",
+        venue="arXiv",
+        year=2024,
+        url="u",
+        arxiv_id="2401.1",
+        referenced_datasets=[ExtractedDataset(source="kaggle", identifier="x/y", url="kg://x/y")],
+    )
+    out = _round_robin_dedupe([[s2], [arx]], cap=10)
+    assert len(out) == 1
+    urls = {d.url for d in out[0].referenced_datasets}
+    assert urls == {"hf://a/b", "kg://x/y"}
+
+
+# ─── arXiv wire-up via find_papers_and_promote ─────────────────────
+
+
+@respx.mock
+def test_find_papers_only_fires_arxiv_for_named_recall_queries(monkeypatch):
+    """Keyword-only directions don't trigger arXiv; named-recall ones do."""
+    # Stub arxiv's rate gate.
+    from dataset_scout import arxiv_search
+
+    arxiv_search._LAST_CALL_AT[0] = 0.0
+    monkeypatch.setattr("dataset_scout.arxiv_search.time.sleep", lambda s: None)
+
+    s2_calls = {"n": 0}
+    arxiv_calls = {"n": 0}
+
+    def s2_handler(req):
+        s2_calls["n"] += 1
+        return httpx.Response(200, json={"data": []})
+
+    def arxiv_handler(req):
+        arxiv_calls["n"] += 1
+        return httpx.Response(
+            200,
+            text="""<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom"></feed>""",
+        )
+
+    respx.get("https://api.semanticscholar.org/graph/v1/paper/search/bulk").mock(
+        side_effect=s2_handler
+    )
+    respx.get("https://export.arxiv.org/api/query").mock(side_effect=arxiv_handler)
+
+    # Direction with keywords only -> S2 only.
+    keyword_only = DecompositionDirection(
+        name="kw_only",
+        rationale="r",
+        keywords=["alpha"],
+        recalled_dataset_names=[],
+        threat_families=[],
+        expected_finds="x",
+    )
+    # Direction with a named benchmark -> S2 AND arXiv.
+    with_named = DecompositionDirection(
+        name="with_named",
+        rationale="r",
+        keywords=[],
+        recalled_dataset_names=["INTIMA"],
+        threat_families=[],
+        expected_finds="x",
+    )
+    find_papers_and_promote(
+        _make_intent(),
+        directions=[keyword_only, with_named],
+        client=httpx.Client(timeout=5.0),
+    )
+    # 1 intent + 2 directions = 3 S2 calls.
+    assert s2_calls["n"] == 3
+    # Only 1 arXiv call: the named-benchmark query.
+    assert arxiv_calls["n"] == 1
+
+
+@respx.mock
+def test_find_papers_arxiv_failure_does_not_break_s2_results(monkeypatch):
+    """arXiv 503 doesn't tank the S2 results for a named-recall query."""
+    from dataset_scout import arxiv_search
+
+    arxiv_search._LAST_CALL_AT[0] = 0.0
+    monkeypatch.setattr("dataset_scout.arxiv_search.time.sleep", lambda s: None)
+
+    respx.get("https://api.semanticscholar.org/graph/v1/paper/search/bulk").mock(
+        return_value=httpx.Response(
+            200,
+            json={"data": [_s2_paper("p1", "Found by S2")]},
+        )
+    )
+    respx.get("https://export.arxiv.org/api/query").mock(
+        return_value=httpx.Response(503, text="busy")
+    )
+
+    direction = DecompositionDirection(
+        name="d",
+        rationale="r",
+        keywords=[],
+        recalled_dataset_names=["INTIMA"],
+        threat_families=[],
+        expected_finds="x",
+    )
+    papers, _ = find_papers_and_promote(
+        _make_intent(),
+        directions=[direction],
+        client=httpx.Client(timeout=5.0),
+    )
+    # S2 paper still surfaced despite arXiv failure.
+    assert len(papers) == 1
+    assert papers[0].paper_id == "p1"

@@ -18,15 +18,30 @@ contract is to yield Candidates that are datasets; mixing papers in
 breaks the strategy assessor (no rows to stream, no transform). Papers
 are referrers — different shape, separate render section.
 
-Backed by the **Semantic Scholar Graph API** (free, no auth required
-for moderate use). Single endpoint covers all four target venues with
-abstracts and citation counts.
+Two backends:
+
+  - **Semantic Scholar Graph API** (free, no auth required for moderate
+    use). Default for every query; covers all configured venues with
+    abstracts and citation counts. Subject to aggressive rate-limiting
+    on the free tier — handled with jittered exponential backoff that
+    honors `Retry-After`.
+  - **arXiv API** (free, no auth, generous limits). Targeted fallback:
+    fired in addition to Semantic Scholar for queries that target
+    named benchmarks (proper nouns from a decomposition direction's
+    `recalled_dataset_names`). Catches frontier preprints that S2's
+    indexing pipeline may not have ingested yet. See
+    `arxiv_search.py` for the implementation.
+
+Cross-backend dedupe is keyed on `PaperReference.arxiv_id` when
+populated, falling back to the source-native paper id.
 """
 
 from __future__ import annotations
 
 import logging
+import random
 import re
+import time
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -50,7 +65,7 @@ _log = logging.getLogger(__name__)
 
 # Bumped when query construction or extraction policy changes in a way
 # that would invalidate cached search results.
-PAPER_SEARCH_VERSION = "1"
+PAPER_SEARCH_VERSION = "2"
 
 _S2_BULK_SEARCH = "https://api.semanticscholar.org/graph/v1/paper/search/bulk"
 _S2_FIELDS = ",".join(
@@ -372,18 +387,28 @@ def find_papers_and_promote(
     Returns ``(papers, promoted_candidates)``:
 
     - ``papers`` — list of `PaperReference` capped at ``max_papers``,
-      deduped by paper_id, in original-query order (round-robin across
-      brief + per-direction queries) so every direction contributes.
+      deduped by paper_id (and by arxiv_id across backends), in
+      original-query order (round-robin across brief + per-direction
+      queries) so every direction contributes.
     - ``promoted_candidates`` — `Candidate` objects derived from
       explicit HF / Kaggle URLs in the abstracts. The pipeline merges
       these into the existing pool by (source, id) — see
       `pipeline._merge_or_register` — so paper provenance shows up as
       `surfaced_by` on whichever candidate already carries the data.
 
-    Failures (network, parse, S2 5xx) log a warning and return
-    ``([], [])`` — recon must not be blocked by paper-discovery
-    infrastructure.
+    For queries that target named benchmarks (proper nouns from a
+    direction's ``recalled_dataset_names``), arXiv runs alongside
+    Semantic Scholar to catch frontier preprints S2 hasn't indexed
+    yet. See `arxiv_search.search_arxiv`.
+
+    Failures (network, parse, persistent rate limits) log a warning
+    and return ``([], [])`` — recon must not be blocked by
+    paper-discovery infrastructure.
     """
+    # Local import keeps the module-import graph free of a cycle:
+    # arxiv_search imports the shared retry helper from this module.
+    from dataset_scout.arxiv_search import search_arxiv
+
     yr = year_range or default_year_range()
     queries = _enumerate_queries(intent, directions)
     if not queries:
@@ -395,8 +420,8 @@ def find_papers_and_promote(
         own_client = True
     try:
         per_query: list[list[PaperReference]] = []
-        for surfaced_by, q in queries:
-            results = _fetch_one(
+        for surfaced_by, q, is_named in queries:
+            s2_results = _fetch_one(
                 q,
                 venues=venues,
                 year_range=yr,
@@ -405,7 +430,18 @@ def find_papers_and_promote(
                 cache=cache,
                 timeout_s=timeout_s,
             )
-            per_query.append(results)
+            if is_named:
+                arxiv_results = search_arxiv(
+                    q,
+                    year_range=yr,
+                    surfaced_by=surfaced_by,
+                    client=client,
+                    cache=cache,
+                    timeout_s=timeout_s,
+                )
+            else:
+                arxiv_results = []
+            per_query.append(s2_results + arxiv_results)
     finally:
         if own_client:
             client.close()
@@ -421,16 +457,26 @@ def find_papers_and_promote(
 
 def _enumerate_queries(
     intent: Intent, directions: list[DecompositionDirection]
-) -> list[tuple[list[str], str]]:
-    """Build the (surfaced_by, query) tuples this stage will issue."""
-    out: list[tuple[list[str], str]] = []
+) -> list[tuple[list[str], str, bool]]:
+    """Build the (surfaced_by, query, is_named_benchmark) tuples.
+
+    `is_named_benchmark` is True when the query string came verbatim
+    from `direction.recalled_dataset_names` (a proper-noun benchmark
+    name like INTIMA or AnthroBench). These queries also fire arXiv
+    in addition to S2: preprint indexing matters most for named
+    benchmarks where S2 may lag arXiv by days or weeks.
+    """
+    out: list[tuple[list[str], str, bool]] = []
     intent_q = _build_intent_query(intent)
     if intent_q:
-        out.append(([], intent_q))
+        out.append(([], intent_q, False))
     for d in directions:
+        recalled_set = {n.strip().lower() for n in d.recalled_dataset_names if n.strip()}
         for q in _direction_queries(d):
-            if q:
-                out.append(([d.name], q))
+            if not q:
+                continue
+            is_named = q.strip().lower() in recalled_set
+            out.append(([d.name], q, is_named))
     return out
 
 
@@ -439,38 +485,55 @@ def _round_robin_dedupe(
     *,
     cap: int,
 ) -> list[PaperReference]:
-    """Interleave per-query results, deduping by paper_id, capped at `cap`.
+    """Interleave per-query results, deduping across queries and backends.
 
-    Identical to the HF / Kaggle search round-robin but on PaperReferences.
-    When the same paper appears in multiple queries, surfaced_by is
-    merged.
+    Primary key is `paper_id` (which differs across S2 and arXiv).
+    A second key on `arxiv_id` collapses cross-backend duplicates so
+    a paper that surfaces from both S2 and arXiv counts once. When
+    the same paper appears in multiple queries, surfaced_by is merged.
     """
-    by_id: dict[str, PaperReference] = {}
+    by_paper_id: dict[str, PaperReference] = {}
+    by_arxiv_id: dict[str, str] = {}  # arxiv_id -> primary paper_id
     out: list[PaperReference] = []
     idx = 0
     any_left = True
     while any_left and len(out) < cap:
         any_left = False
         for results in per_query:
-            if idx < len(results):
-                any_left = True
-                p = results[idx]
-                existing = by_id.get(p.paper_id)
-                if existing is None:
-                    by_id[p.paper_id] = p
-                    out.append(p)
-                    if len(out) >= cap:
-                        break
-                else:
-                    # Merge surfaced_by, preserving order.
-                    merged = list(existing.surfaced_by)
-                    for s in p.surfaced_by:
-                        if s not in merged:
-                            merged.append(s)
-                    if merged != existing.surfaced_by:
-                        # Pydantic frozen check: ReconResult papers list
-                        # holds non-frozen models, so direct mutation works.
-                        existing.surfaced_by = merged
+            if idx >= len(results):
+                continue
+            any_left = True
+            p = results[idx]
+            primary_id: str | None = None
+            if p.arxiv_id and p.arxiv_id in by_arxiv_id:
+                primary_id = by_arxiv_id[p.arxiv_id]
+            elif p.paper_id in by_paper_id:
+                primary_id = p.paper_id
+            if primary_id is None:
+                by_paper_id[p.paper_id] = p
+                if p.arxiv_id:
+                    by_arxiv_id[p.arxiv_id] = p.paper_id
+                out.append(p)
+                if len(out) >= cap:
+                    break
+                continue
+            existing = by_paper_id[primary_id]
+            merged = list(existing.surfaced_by)
+            for s in p.surfaced_by:
+                if s not in merged:
+                    merged.append(s)
+            if merged != existing.surfaced_by:
+                # Pydantic frozen check: ReconResult papers list
+                # holds non-frozen models, so direct mutation works.
+                existing.surfaced_by = merged
+            # Adopt new dataset references from the duplicate so a
+            # paper found via both backends keeps the union of
+            # promotable URLs.
+            existing_urls = {d.url for d in existing.referenced_datasets}
+            for d in p.referenced_datasets:
+                if d.url not in existing_urls:
+                    existing.referenced_datasets.append(d)
+                    existing_urls.add(d.url)
         idx += 1
     return out
 
@@ -546,9 +609,7 @@ def _fetch_one(
         cached = cache.get_json("papers", key)
         if isinstance(cached, list):
             try:
-                return [
-                    _model_validate_with_surfaced_by(item, surfaced_by) for item in cached
-                ]
+                return [_model_validate_with_surfaced_by(item, surfaced_by) for item in cached]
             except Exception:  # pragma: no cover - defensive
                 pass
 
@@ -566,25 +627,19 @@ def _fetch_one(
         venue_param = venue_filter_value(venues_list)
         if venue_param:
             params["venue"] = venue_param
-    payload: Any = None
-    for attempt in range(2):
-        try:
-            response = client.get(_S2_BULK_SEARCH, params=params, timeout=timeout_s)
-            if response.status_code == 429 and attempt == 0:
-                # S2 free tier rate-limits aggressively. Single short
-                # backoff and retry; if it fails again we give up
-                # silently (frontier work; non-blocking).
-                import time
-
-                time.sleep(2.0)
-                continue
-            response.raise_for_status()
-            payload = response.json()
-            break
-        except (httpx.HTTPError, ValueError) as exc:
-            _log.warning("paper search failed for query=%r: %s", query, exc)
-            return []
-    if payload is None:
+    response = http_get_with_retry(
+        client,
+        _S2_BULK_SEARCH,
+        params=params,
+        timeout_s=timeout_s,
+        label=f"semantic-scholar query={query!r}",
+    )
+    if response is None:
+        return []
+    try:
+        payload: Any = response.json()
+    except ValueError as exc:
+        _log.warning("paper search parse failed for query=%r: %s", query, exc)
         return []
 
     raw_data = payload.get("data") if isinstance(payload, dict) else None
@@ -651,6 +706,7 @@ def _normalise_s2_paper(raw: dict[str, Any]) -> PaperReference | None:
 
     url = _resolve_paper_url(raw, paper_id)
     references = extract_dataset_references(abstract)
+    arxiv_id = _extract_s2_arxiv_id(raw)
 
     return PaperReference(
         paper_id=paper_id,
@@ -663,7 +719,29 @@ def _normalise_s2_paper(raw: dict[str, Any]) -> PaperReference | None:
         citation_count=citation_count,
         referenced_datasets=references,
         surfaced_by=[],  # filled in by caller
+        arxiv_id=arxiv_id,
     )
+
+
+def _extract_s2_arxiv_id(raw: dict[str, Any]) -> str | None:
+    """Pull S2's `externalIds.ArXiv` for cross-backend dedupe.
+
+    Normalises by stripping any version suffix (`v1`, `v2`, ...) so a
+    paper that arXiv returns as `2401.12345v3` matches what S2 stored
+    as `2401.12345`.
+    """
+    ext = raw.get("externalIds")
+    if not isinstance(ext, dict):
+        return None
+    val = ext.get("ArXiv")
+    if not isinstance(val, str) or not val.strip():
+        return None
+    return _normalise_arxiv_id(val.strip())
+
+
+def _normalise_arxiv_id(value: str) -> str:
+    """Strip a trailing `vN` version suffix from an arXiv ID, if any."""
+    return re.sub(r"v\d+$", "", value, flags=re.IGNORECASE)
 
 
 def _resolve_paper_url(raw: dict[str, Any], paper_id: str) -> str:
@@ -680,6 +758,89 @@ def _resolve_paper_url(raw: dict[str, Any], paper_id: str) -> str:
     return f"https://www.semanticscholar.org/paper/{paper_id}"
 
 
+# ─── shared HTTP retry helper ──────────────────────────────────────
+
+
+# Tunables for the retry helper. Caller can override per-call. These
+# defaults survived a real-world six-axis parallel recon that hit S2
+# with sustained 429 floods — recon completed without losing the
+# paper channel.
+_RETRY_MAX_ATTEMPTS = 4
+_RETRY_BASE_WAIT = 2.0
+_RETRY_MAX_WAIT = 30.0
+
+
+def http_get_with_retry(
+    client: httpx.Client,
+    url: str,
+    *,
+    params: dict[str, str] | None = None,
+    timeout_s: float,
+    label: str,
+    max_attempts: int = _RETRY_MAX_ATTEMPTS,
+    base_wait: float = _RETRY_BASE_WAIT,
+    max_wait: float = _RETRY_MAX_WAIT,
+) -> httpx.Response | None:
+    """GET with jittered exponential backoff + Retry-After support.
+
+    Used by both paper-search backends (Semantic Scholar, arXiv) so
+    they share rate-limit handling. Returns the response on 2xx, or
+    `None` if all attempts are exhausted or the request raised. Logs
+    a single warning on persistent failure — paper search is
+    non-blocking for recon so we don't surface to the caller.
+
+    Backoff per 429:
+      - Honor `Retry-After` header when present (seconds form).
+      - Otherwise wait `base_wait * 2^attempt + uniform(0,1)` seconds,
+        capped at `max_wait`.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(max_attempts):
+        try:
+            response = client.get(url, params=params, timeout=timeout_s)
+        except httpx.HTTPError as exc:
+            last_exc = exc
+            break
+        if response.status_code == 429:
+            if attempt == max_attempts - 1:
+                _log.warning(
+                    "%s rate-limited (429) after %d attempts; giving up",
+                    label,
+                    max_attempts,
+                )
+                return None
+            wait = _retry_after_seconds(response.headers.get("Retry-After"))
+            if wait is None:
+                wait = base_wait * (2**attempt) + random.uniform(0, 1)
+            wait = min(wait, max_wait)
+            time.sleep(wait)
+            continue
+        try:
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            last_exc = exc
+            break
+        return response
+    if last_exc is not None:
+        _log.warning("%s failed: %s", label, last_exc)
+    return None
+
+
+def _retry_after_seconds(value: str | None) -> float | None:
+    """Parse a Retry-After header's seconds form. None when absent or HTTP-date.
+
+    Per RFC 9110, Retry-After can be either a delay-seconds integer or
+    an HTTP-date. We support the seconds form (what S2 sends in
+    practice) and fall through to our exponential backoff for dates.
+    """
+    if not value:
+        return None
+    try:
+        return float(value.strip())
+    except ValueError:
+        return None
+
+
 __all__ = [
     "DEFAULT_VENUES",
     "PAPER_SEARCH_VERSION",
@@ -687,5 +848,6 @@ __all__ = [
     "default_year_range",
     "extract_dataset_references",
     "find_papers_and_promote",
+    "http_get_with_retry",
     "venue_filter_value",
 ]

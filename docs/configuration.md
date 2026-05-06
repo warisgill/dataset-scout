@@ -78,10 +78,12 @@ permissions are sufficient.
 
 ---
 
-## 3. Kaggle *(M1b — not yet wired)*
+## 3. Kaggle
 
-Set `KAGGLE_USERNAME` and `KAGGLE_KEY` and Kaggle source will activate
-once it lands.
+Set `KAGGLE_USERNAME` and `KAGGLE_KEY` to enable Kaggle search.
+Kaggle source is discovery-only — `stream_sample`/`stream_rows` are
+not supported; components from Kaggle materialise as
+`unsupported_source` in `curate` with an actionable hint.
 
 ---
 
@@ -89,7 +91,7 @@ once it lands.
 
 | Variable | What it overrides | Default (Linux/macOS) | Default (Windows) |
 |---|---|---|---|
-| `DATASET_SCOUT_CACHE_DIR` | SQLite cache (M1b) and the M10 judge disk cache | `~/.cache/dataset-scout/` | `%LOCALAPPDATA%\dataset-scout\cache\` |
+| `DATASET_SCOUT_CACHE_DIR` | SQLite cache and the judge disk cache | `~/.cache/dataset-scout/` | `%LOCALAPPDATA%\dataset-scout\cache\` |
 | `DATASET_SCOUT_CONFIG_DIR` | Config TOML | `~/.config/dataset-scout/` | `%APPDATA%\dataset-scout\` |
 | `DATASET_SCOUT_OUT_DIR` | Default `--out` for `recon` | `./datascout-out/` | `.\datascout-out\` |
 

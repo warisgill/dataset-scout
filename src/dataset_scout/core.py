@@ -375,6 +375,7 @@ class PaperReference(BaseModel):
     citation_count: int | None = None
     referenced_datasets: list[ExtractedDataset] = Field(default_factory=list)
     surfaced_by: list[str] = Field(default_factory=list)
+    arxiv_id: str | None = None
 
 
 # ─── Normalized record (curate output schema) ────────────────────────
