@@ -441,7 +441,13 @@ def run_recon(
         from dataset_scout.shortlist import select_top_for_assessor
         from dataset_scout.strategy import assess_strategies
 
-        shortlist = select_top_for_assessor(scorecards)
+        recalled_names: list[str] = []
+        for d in directions:
+            for n in d.recalled_dataset_names or ():
+                if n and n.strip():
+                    recalled_names.append(n)
+
+        shortlist = select_top_for_assessor(scorecards, recalled_names=recalled_names)
         source_index: dict[str, Source] = {s.name: s for s in sources}
         _emit(
             ProgressEventKind.STAGE_STARTED,

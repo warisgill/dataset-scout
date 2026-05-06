@@ -99,3 +99,60 @@ def test_original_intent_grouping():
     ids = {sc.candidate.id for sc in out}
     # 2 from each group → 4 total.
     assert len(ids) == 4
+
+
+def test_recalled_name_rescues_low_ranked_candidate():
+    """A candidate matching a recalled name is force-included even if
+    cheap signals + rank would have dropped it."""
+    # 30 strong candidates would fill up a small cap.
+    fillers = [
+        _sc(f"filler_{i}", surfaced_by=["dir_x"], license_value=1.0)
+        for i in range(30)
+    ]
+    # Buried candidate with weak signals; its id matches a recalled name.
+    buried = _sc(
+        "AI-companionship/INTIMA",
+        surfaced_by=["dir_y"],
+        license_value=0.0,
+        cc_value=0.0,
+    )
+    out = select_top_for_assessor(
+        [*fillers, buried],
+        top_per_direction=5,
+        total_cap=10,
+        recalled_names=["INTIMA"],
+    )
+    ids = [sc.candidate.id for sc in out]
+    assert "AI-companionship/INTIMA" in ids
+    # And it lands at the front since rescues are surfaced first.
+    assert ids[0] == "AI-companionship/INTIMA"
+
+
+def test_recalled_name_match_is_normalised():
+    """'Persona Chat' matches 'PersonaChat' and 'persona-chat' (alphanum-only)."""
+    a = _sc("foo/PersonaChat", surfaced_by=["d"])
+    b = _sc("foo/persona-chat", surfaced_by=["d"])
+    c = _sc("foo/UnrelatedDataset", surfaced_by=["d"])
+    out = select_top_for_assessor(
+        [c, a, b],
+        top_per_direction=5,
+        total_cap=10,
+        recalled_names=["Persona Chat"],
+    )
+    ids = [sc.candidate.id for sc in out]
+    assert "foo/PersonaChat" in ids
+    assert "foo/persona-chat" in ids
+
+
+def test_recalled_name_rescue_no_duplicates():
+    """A rescued candidate is not also re-emitted via the per-direction stage."""
+    sc = _sc("foo/INTIMA", surfaced_by=["dir_y"])
+    out = select_top_for_assessor([sc], total_cap=10, recalled_names=["INTIMA"])
+    assert len(out) == 1
+
+
+def test_default_total_cap_is_35():
+    """Defaulted shortlist cap should be 35 (raised from 20)."""
+    cards = [_sc(f"x{i}", surfaced_by=["dir"]) for i in range(80)]
+    out = select_top_for_assessor(cards, top_per_direction=80)
+    assert len(out) == 35
