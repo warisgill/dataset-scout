@@ -170,41 +170,42 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .muted { color: var(--fg-muted); }
 .small { font-size: 0.88em; }
 
-/* ─── Report hero (wordmark) ──────────────────────────────────── */
+/* ─── Report hero (crisp typographic header) ──────────────────── */
 .report-hero {
-  text-align: center;
-  margin: 0 0 1.5em;
-  padding: 32px 16px 24px;
+  margin: 0 0 1.25em;
+  padding: 28px 0 20px;
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--accent) 6%, var(--bg)) 0%,
-    var(--bg) 100%
-  );
-  border-radius: 8px 8px 0 0;
 }
-.hero-wordmark {
-  display: inline-block;
+.report-hero__title {
   margin: 0;
-  padding: 0;
-  background: transparent;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.78rem;
-  line-height: 1.05;
-  font-weight: 700;
-  color: var(--accent);
-  white-space: pre;
-  text-align: left;
-  letter-spacing: 0;
+  font-size: clamp(1.6rem, 2.6vw + 0.6rem, 2.4rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4em;
 }
-@media (max-width: 600px) {
-  .hero-wordmark { font-size: 0.55rem; }
-}
-.hero-tagline {
-  margin: 12px 0 0;
+.report-hero__product { color: var(--accent); }
+.report-hero__sep {
   color: var(--fg-muted);
-  font-size: 0.95em;
-  font-style: italic;
+  font-weight: 400;
+}
+.report-hero__verb {
+  color: var(--fg);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.62em;
+  letter-spacing: 0.14em;
+  padding: 4px 10px;
+  background: var(--bg-muted);
+  border-radius: 4px;
+}
+.report-hero__tagline {
+  margin: 8px 0 0;
+  color: var(--fg-muted);
+  font-size: 0.98em;
 }
 
 /* ─── Brief hero (the user's input, prominent) ─────────────────── */
@@ -634,20 +635,20 @@ def _write_doc_head(buf: StringIO, title: str) -> None:
 
 
 def _write_header(buf: StringIO, ctx: ReconReportContext) -> None:
-    """Hero-style header: monospace wordmark + tagline + mode callout.
+    """Crisp, bold report header: product name + tagline + mode callout.
 
-    Per UX feedback: "make the header much more visually appealing
-    and make it pop with maybe some ascii art and highlighting what
-    the brief was about more". The brief itself gets a separate
-    quote-styled hero block in `_write_brief_section`.
+    No ASCII art — just a confident wordmark and a single-line tagline
+    that orients the reader before the brief itself takes over below.
     """
     buf.write(
         '<header class="report-hero">\n'
-        '<pre class="hero-wordmark" aria-label="dataset-scout">'
-        + _ASCII_WORDMARK
-        + "</pre>\n"
-        '<p class="hero-tagline">'
-        "Public-dataset reconnaissance · brief in, audit-ready corpus out"
+        '  <h1 class="report-hero__title">'
+        '<span class="report-hero__product">dataset-scout</span>'
+        '<span class="report-hero__sep">/</span>'
+        '<span class="report-hero__verb">recon report</span>'
+        "</h1>\n"
+        '  <p class="report-hero__tagline">'
+        "Public-dataset reconnaissance &mdash; brief in, audit-ready corpus out."
         "</p>\n"
         "</header>\n"
     )
@@ -710,16 +711,7 @@ def _write_header(buf: StringIO, ctx: ReconReportContext) -> None:
         )
 
 
-# Hand-tuned monospace wordmark. Block-style with no background-fill
-# so it works on light + dark themes via currentColor.
-_ASCII_WORDMARK = (
-    " ____   ____ _____ _____ _____   ____  _____ \n"
-    "|  _ \\ / ___| ____|_   _|  ___| |  _ \\|_   _|\n"
-    "| | | |\\___ \\| |__   | | | |__   | |_) | | |  \n"
-    "| |_| | ___) |  __|  | | |  __|  |  __/  | |  \n"
-    "|____/ |____/|_|     |_| |_|     |_|     |_|  \n"
-    "    d a t a s e t - s c o u t   ·   r e c o n\n"
-)
+# (No ASCII wordmark — see _write_header for the crisp typographic header.)
 
 
 def _write_brief_section(buf: StringIO, result: ReconResult) -> None:
@@ -845,9 +837,12 @@ def _write_run_summary_compact(
     expanded only if the reader expands the meta details footer below.
     """
     bits: list[str] = []
-    bits.append(f"<b>{ctx.n_candidates}</b> candidates")
     if ctx.has_strategies:
-        bits.append(f"<b>{ctx.n_strategy_assessed}</b> assessed")
+        bits.append(
+            f"<b>{ctx.n_strategy_assessed}</b> of <b>{ctx.n_candidates}</b> assessed"
+        )
+    else:
+        bits.append(f"<b>{ctx.n_candidates}</b> candidates")
     if ctx.n_directions:
         bits.append(f"<b>{ctx.n_directions}</b> directions")
     if ctx.n_papers:

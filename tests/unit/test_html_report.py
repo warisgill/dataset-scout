@@ -179,12 +179,16 @@ def test_renders_coverage_gaps_when_present():
             assert gap.aspect in html
 
 
-def test_html_header_includes_ascii_wordmark():
-    """Round-2: header has a monospace wordmark for visual identity."""
+def test_html_header_includes_crisp_wordmark():
+    """Header is a clean typographic h1 (no ASCII art)."""
     result = build_tour_result()
     html = render_recon_report_html(result)
-    assert '<pre class="hero-wordmark"' in html
     assert "report-hero" in html
+    assert 'class="report-hero__title"' in html
+    assert "dataset-scout" in html
+    # No ASCII wordmark anymore.
+    assert 'class="hero-wordmark"' not in html
+    assert "<pre" not in html.split("</header>", 1)[0]
 
 
 def test_html_brief_renders_as_hero_blockquote():
