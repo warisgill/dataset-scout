@@ -48,17 +48,17 @@ def render_recon_report_html(result: ReconResult) -> str:
     data is and what to do with it. Bottom: investigative material
     (decomposition, papers) collapsed in <details> blocks.
 
-      1. h1 + mode callout
-      2. Brief
-      3. Compact run summary (one-line counts)
-      4. At-a-glance scoreboard (verdict mix)
-      5. Sourcing roadmap / coverage gaps
-      6. Grouped candidates (simplified cards w/ <details> for the
-         long-form rationale)
+      1. Header (wordmark + tagline)
+      2. Mode callout (Strategy-assessed / Sparse coverage / etc.)
+      3. Brief
+      4. Compact run summary (one-line counts)
+      5. At-a-glance scoreboard (verdict mix)
+      6. Grouped candidate cards
       7. Decomposition (collapsed)
       8. Related papers (collapsed)
-      9. Recipe preview / next steps
-     10. Footer disclaimer
+      9. Sourcing roadmap / coverage gaps
+     10. Recipe preview / next steps
+     11. Footer disclaimer
     """
     ctx = ReconReportContext.from_result(result)
     buf = StringIO()
@@ -69,16 +69,16 @@ def render_recon_report_html(result: ReconResult) -> str:
     _write_run_summary_compact(buf, result, ctx)
     if ctx.has_strategies:
         _write_at_a_glance(buf, ctx)
-    if ctx.show_gaps_lead and result.coverage:
-        _write_gaps_section(buf, result, lead=True)
-    elif result.coverage and result.coverage.semantic_gaps:
-        _write_gaps_section(buf, result, lead=False)
     if result.candidates:
         _write_candidates_section(buf, result, ctx)
     if ctx.has_decomposition and result.coverage:
         _write_decomposition_section(buf, result)
     if ctx.show_papers:
         _write_papers_section(buf, result, ctx)
+    if ctx.show_gaps_lead and result.coverage:
+        _write_gaps_section(buf, result, lead=True)
+    elif result.coverage and result.coverage.semantic_gaps:
+        _write_gaps_section(buf, result, lead=False)
     if ctx.show_recipe_preview:
         _write_recipe_preview(buf, ctx)
     _write_footer(buf)
