@@ -51,8 +51,8 @@ def render_recon_report_html(result: ReconResult) -> str:
       1. h1 + mode callout
       2. Brief
       3. Compact run summary (one-line counts)
-      4. Sourcing roadmap / coverage gaps  ← first actionable content
-      5. At-a-glance scoreboard
+      4. At-a-glance scoreboard (verdict mix)
+      5. Sourcing roadmap / coverage gaps
       6. Grouped candidates (simplified cards w/ <details> for the
          long-form rationale)
       7. Decomposition (collapsed)
@@ -67,12 +67,12 @@ def render_recon_report_html(result: ReconResult) -> str:
     _write_header(buf, ctx)
     _write_brief_section(buf, result)
     _write_run_summary_compact(buf, result, ctx)
+    if ctx.has_strategies:
+        _write_at_a_glance(buf, ctx)
     if ctx.show_gaps_lead and result.coverage:
         _write_gaps_section(buf, result, lead=True)
     elif result.coverage and result.coverage.semantic_gaps:
         _write_gaps_section(buf, result, lead=False)
-    if ctx.has_strategies:
-        _write_at_a_glance(buf, ctx)
     if result.candidates:
         _write_candidates_section(buf, result, ctx)
     if ctx.has_decomposition and result.coverage:
@@ -280,32 +280,77 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 /* ─── Collapsed sections (Decomposition + Papers) ─────────────── */
 .collapsed-section {
   margin: 1.5em 0;
-  border-left: 3px solid var(--border);
-  padding-left: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-muted);
+  overflow: hidden;
+  transition: border-color 0.15s ease;
 }
 .collapsed-section[open] {
-  border-left-color: var(--accent);
+  border-color: var(--accent);
+  background: var(--bg);
 }
 .collapsed-section > summary {
   cursor: pointer;
   list-style: none;
-  /* Hide the default disclosure triangle, replace with our own ▸/▾ */
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  user-select: none;
+  background: var(--bg-muted);
+  border-radius: 8px;
+}
+.collapsed-section[open] > summary {
+  border-bottom: 1px solid var(--border);
+  border-radius: 8px 8px 0 0;
+}
+.collapsed-section > summary:hover {
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-muted));
 }
 .collapsed-section > summary::-webkit-details-marker { display: none; }
 .collapsed-section > summary::before {
-  content: "▸  ";
-  display: inline-block;
-  color: var(--fg-muted);
-  font-size: 0.85em;
+  content: "▸";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; height: 22px;
+  flex-shrink: 0;
+  color: var(--accent);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.7em;
   transition: transform 0.15s ease;
 }
-.collapsed-section[open] > summary::before { content: "▾  "; }
+.collapsed-section[open] > summary::before {
+  content: "▾";
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.collapsed-section > summary::after {
+  content: "Click to expand";
+  margin-left: auto;
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.collapsed-section[open] > summary::after { content: "Click to collapse"; }
+.collapsed-section > :not(summary) {
+  padding: 0 18px;
+}
+.collapsed-section > :not(summary):last-child { padding-bottom: 16px; }
+.collapsed-section > :not(summary):first-of-type { padding-top: 16px; }
 .inline-h2 {
   display: inline;
   border: none;
   padding: 0;
   margin: 0;
-  font-size: 1.4rem;
+  font-size: 1.25rem;
 }
 
 /* ─── At-a-glance scoreboard ──────────────────────────────────── */
@@ -371,8 +416,8 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
   margin-bottom: 6px;
 }
 .candidate__title-link {
-  display: flex; flex-wrap: wrap; gap: 6px 12px;
-  align-items: center;
+  display: flex; flex-wrap: wrap; gap: 8px 14px;
+  align-items: baseline;
   text-decoration: none;
   color: inherit;
   padding: 4px 0;
@@ -389,16 +434,26 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
   content: "↗";
   color: var(--fg-muted);
   font-size: 0.85em;
-  margin-left: 4px;
+  margin-left: auto;
   opacity: 0.6;
+  align-self: center;
 }
-.candidate__rank { font-weight: 700; color: var(--fg-muted); font-size: 0.85em; min-width: 2.5em; }
-.candidate__verdict {
+.candidate__rank {
   font-weight: 600;
-  padding: 2px 10px;
+  color: var(--fg-muted);
+  font-size: 0.78em;
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+  letter-spacing: 0.04em;
+}
+.candidate__verdict {
+  font-weight: 700;
+  padding: 3px 10px;
   border-radius: 4px;
   background: var(--bg-muted);
-  font-size: 0.85em;
+  font-size: 0.78em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 .candidate__verdict--direct_use { color: var(--good); background: color-mix(in srgb, var(--good) 12%, var(--bg)); }
@@ -410,8 +465,10 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .candidate__verdict--not_useful { color: var(--neutral); background: var(--bg-muted); opacity: 0.85; }
 .candidate__id {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.95em;
+  font-size: 1.18em;
+  font-weight: 700;
   color: var(--fg);
+  letter-spacing: -0.005em;
 }
 
 .candidate__lede {
@@ -1011,14 +1068,14 @@ def _write_candidate(
     # ─── Header: clickable, links to the dataset card ──────────
     title_text = f"{escape(cand.source)}:{escape(cand.id)}"
     head_inner_parts: list[str] = [
-        f'<span class="candidate__rank">#{index}</span>',
+        f'<span class="candidate__id">{title_text}</span>',
     ]
     if verdict is not None:
         head_inner_parts.append(
             f'<span class="candidate__verdict candidate__verdict--{kind_class}">'
             f"{escape(verdict.headline)}</span>"
         )
-    head_inner_parts.append(f'<span class="candidate__id">{title_text}</span>')
+    head_inner_parts.append(f'<span class="candidate__rank">#{index}</span>')
     head_inner = "".join(head_inner_parts)
 
     if md.card_url:
