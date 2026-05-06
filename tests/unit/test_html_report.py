@@ -179,6 +179,49 @@ def test_renders_coverage_gaps_when_present():
             assert gap.aspect in html
 
 
+def test_html_header_includes_ascii_wordmark():
+    """Round-2: header has a monospace wordmark for visual identity."""
+    result = build_tour_result()
+    html = render_recon_report_html(result)
+    assert '<pre class="hero-wordmark"' in html
+    assert "report-hero" in html
+
+
+def test_html_brief_renders_as_hero_blockquote():
+    """Round-2: the brief is highlighted as a quoted hero block, not a tiny header."""
+    result = build_tour_result()
+    html = render_recon_report_html(result)
+    assert 'class="brief-hero"' in html
+    assert 'class="brief-hero__text"' in html
+    assert "<blockquote" in html
+    assert "BRIEF" in html
+
+
+def test_html_gaps_render_as_table_when_present():
+    """Round-2: sourcing roadmap is a scannable table, not a stack of headings."""
+    result = build_tour_result()
+    if result.coverage and result.coverage.semantic_gaps:
+        html = render_recon_report_html(result)
+        assert '<table class="gaps-table">' in html
+        assert "Aspect" in html and "What's missing" in html and "Next step" in html
+
+
+def test_html_collapses_not_useful_into_single_note():
+    """Round-2: 'not useful' candidates collapse into one aside, not card grid."""
+    result = build_tour_result()
+    html = render_recon_report_html(result)
+    # If the tour fixture has any not_useful candidates, they should NOT be
+    # rendered as full cards. We assert the consolidated note is present
+    # whenever any candidate has a 'not_useful' verdict.
+    from dataset_scout.render._view import ReconReportContext
+
+    ctx = ReconReportContext.from_result(result)
+    has_not_useful = any(g.key == "not_useful" and g.cards for g in ctx.groups)
+    if has_not_useful:
+        assert 'class="not-useful-note"' in html
+        assert "not useful" in html.lower()
+
+
 def test_html_escaping_blocks_brief_xss():
     """A brief containing HTML metacharacters is escaped, not injected."""
     result = build_tour_result()

@@ -170,6 +170,98 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .muted { color: var(--fg-muted); }
 .small { font-size: 0.88em; }
 
+/* ─── Report hero (wordmark) ──────────────────────────────────── */
+.report-hero {
+  text-align: center;
+  margin: 0 0 1.5em;
+  padding: 32px 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 6%, var(--bg)) 0%,
+    var(--bg) 100%
+  );
+  border-radius: 8px 8px 0 0;
+}
+.hero-wordmark {
+  display: inline-block;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.05;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: pre;
+  text-align: left;
+  letter-spacing: 0;
+}
+@media (max-width: 600px) {
+  .hero-wordmark { font-size: 0.55rem; }
+}
+.hero-tagline {
+  margin: 12px 0 0;
+  color: var(--fg-muted);
+  font-size: 0.95em;
+  font-style: italic;
+}
+
+/* ─── Brief hero (the user's input, prominent) ─────────────────── */
+.brief-hero {
+  margin: 1.5em 0 2em;
+  padding: 22px 26px;
+  background: var(--bg-muted);
+  border-radius: 8px;
+  border-left: 4px solid var(--accent);
+  position: relative;
+}
+.brief-hero__label {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  padding: 2px 10px;
+  border-radius: 3px;
+  margin-bottom: 10px;
+}
+.brief-hero__text {
+  margin: 0;
+  padding: 0;
+  font-size: 1.18em;
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--fg);
+  border: none;
+  font-style: normal;
+  /* Rely on the side rule of .brief-hero for visual emphasis. */
+}
+.brief-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.brief-hero__pill {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 0.88em;
+  color: var(--fg);
+}
+.brief-hero__pill-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82em;
+  font-weight: 600;
+  color: var(--fg-muted);
+  letter-spacing: 0.05em;
+}
+
 /* ─── Compact run summary at top ──────────────────────────────── */
 .run-summary-compact {
   display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline;
@@ -398,6 +490,77 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .probe-grid dt { color: var(--fg-muted); }
 .probe-grid dd { margin: 0; }
 
+/* ─── Sourcing roadmap table ──────────────────────────────────── */
+.gaps-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0 1.5em;
+  font-size: 0.95em;
+}
+.gaps-table thead th {
+  text-align: left;
+  padding: 10px 12px;
+  background: var(--bg-muted);
+  border-bottom: 2px solid var(--border);
+  font-weight: 600;
+  font-size: 0.85em;
+  color: var(--fg-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.gaps-table tbody td {
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  line-height: 1.5;
+}
+.gaps-table tbody tr:last-child td { border-bottom: none; }
+.gaps-table tbody tr:hover { background: var(--bg-muted); }
+.gaps-table__aspect {
+  width: 22%;
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+}
+.gaps-table__gap { width: 38%; color: var(--fg-muted); }
+.gaps-table__step {
+  width: 40%;
+  color: var(--fg);
+  border-left: 3px solid color-mix(in srgb, var(--accent) 30%, var(--bg));
+  padding-left: 16px;
+}
+@media (max-width: 700px) {
+  /* Stack on narrow screens — table layout breaks down anyway. */
+  .gaps-table thead { display: none; }
+  .gaps-table, .gaps-table tbody, .gaps-table tr, .gaps-table td { display: block; width: auto; }
+  .gaps-table tbody tr { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .gaps-table tbody tr:hover { background: transparent; }
+  .gaps-table__aspect { font-weight: 700; padding-bottom: 4px; }
+  .gaps-table__step { border-left: none; padding-left: 12px; }
+}
+
+/* ─── Consolidated "not useful" note ─────────────────────────── */
+.not-useful-note {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 1.5em 0;
+  padding: 12px 16px;
+  background: var(--bg-muted);
+  border-radius: 6px;
+  border-left: 3px solid var(--neutral);
+  font-size: 0.93em;
+  color: var(--fg-muted);
+}
+.not-useful-note__count {
+  font-size: 1.4em;
+  font-weight: 700;
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  min-width: 1.6em;
+  text-align: center;
+}
+
 /* ─── Recipe / curate preview ─────────────────────────────────── */
 .recipe-preview {
   margin: 2em 0;
@@ -471,7 +634,25 @@ def _write_doc_head(buf: StringIO, title: str) -> None:
 
 
 def _write_header(buf: StringIO, ctx: ReconReportContext) -> None:
-    buf.write("<h1>dataset-scout recon report</h1>\n")
+    """Hero-style header: monospace wordmark + tagline + mode callout.
+
+    Per UX feedback: "make the header much more visually appealing
+    and make it pop with maybe some ascii art and highlighting what
+    the brief was about more". The brief itself gets a separate
+    quote-styled hero block in `_write_brief_section`.
+    """
+    buf.write(
+        '<header class="report-hero">\n'
+        '<pre class="hero-wordmark" aria-label="dataset-scout">'
+        + _ASCII_WORDMARK
+        + "</pre>\n"
+        '<p class="hero-tagline">'
+        "Public-dataset reconnaissance · brief in, audit-ready corpus out"
+        "</p>\n"
+        "</header>\n"
+    )
+    # Mode callout immediately below the hero so the framing is set
+    # before the user sees the brief.
     if ctx.metadata_only:
         buf.write(
             '<div class="callout callout--warn"><strong>⚠️ Metadata-only mode.</strong>'
@@ -529,37 +710,97 @@ def _write_header(buf: StringIO, ctx: ReconReportContext) -> None:
         )
 
 
+# Hand-tuned monospace wordmark. Block-style with no background-fill
+# so it works on light + dark themes via currentColor.
+_ASCII_WORDMARK = (
+    " ____   ____ _____ _____ _____   ____  _____ \n"
+    "|  _ \\ / ___| ____|_   _|  ___| |  _ \\|_   _|\n"
+    "| | | |\\___ \\| |__   | | | |__   | |_) | | |  \n"
+    "| |_| | ___) |  __|  | | |  __|  |  __/  | |  \n"
+    "|____/ |____/|_|     |_| |_|     |_|     |_|  \n"
+    "    d a t a s e t - s c o u t   ·   r e c o n\n"
+)
+
+
 def _write_brief_section(buf: StringIO, result: ReconResult) -> None:
+    """Render the brief as a prominent quote-styled hero block.
+
+    This is the second visual focus of the page (after the wordmark)
+    so users immediately see what the run was about. Detection target,
+    threat families, languages render as inline metadata pills below.
+    """
     intent = result.intent
-    buf.write("<h2>Brief</h2>\n")
-    buf.write(f'<p><b>Raw brief:</b> {escape(intent.raw_brief)}</p>\n')
-    if intent.detection_target:
-        buf.write(f'<p><b>Detection target:</b> {escape(intent.detection_target)}</p>\n')
-    if intent.threat_families:
-        buf.write(
-            f'<p><b>Threat families:</b> {escape(", ".join(intent.threat_families))}</p>\n'
-        )
+    buf.write('<section class="brief-hero">\n')
+    buf.write('  <span class="brief-hero__label">BRIEF</span>\n')
     buf.write(
-        f'<p><b>Languages requested:</b> {escape(", ".join(intent.languages))}</p>\n'
+        f'  <blockquote class="brief-hero__text">{escape(intent.raw_brief)}</blockquote>\n'
     )
+    meta_pills: list[str] = []
+    if intent.detection_target:
+        target = intent.detection_target
+        if len(target) > 80:
+            target = target[:77].rstrip(" ,;:") + "…"
+        meta_pills.append(
+            f'<span class="brief-hero__pill"><span class="brief-hero__pill-label">target</span>'
+            f' {escape(target)}</span>'
+        )
+    if intent.threat_families:
+        meta_pills.append(
+            f'<span class="brief-hero__pill"><span class="brief-hero__pill-label">threats</span>'
+            f' {escape(", ".join(intent.threat_families))}</span>'
+        )
+    if intent.languages:
+        meta_pills.append(
+            f'<span class="brief-hero__pill"><span class="brief-hero__pill-label">languages</span>'
+            f' {escape(", ".join(intent.languages))}</span>'
+        )
+    if intent.deployment_context:
+        meta_pills.append(
+            f'<span class="brief-hero__pill"><span class="brief-hero__pill-label">deployment</span>'
+            f' {escape(intent.deployment_context)}</span>'
+        )
+    if meta_pills:
+        buf.write('  <div class="brief-hero__meta">' + "".join(meta_pills) + "</div>\n")
+    buf.write("</section>\n")
 
 
 def _write_gaps_section(buf: StringIO, result: ReconResult, *, lead: bool) -> None:
+    """Render the sourcing roadmap as a scannable table.
+
+    Per UX feedback: cognition is faster on a table than on a stack of
+    h3 + prose blocks. Three columns: aspect, what's missing, concrete
+    next step. The last column is the actionable bit; the row links
+    aspect-name → suggestion → action.
+    """
     if result.coverage is None:
         return
     title = "Sourcing roadmap" if lead else "Coverage gaps"
     buf.write(f"<h2>{title}</h2>\n")
     if lead:
         buf.write(
-            "<p>Where the data is — and isn't. The LLM identified specific aspects of "
-            "your brief that the candidate set doesn't cover, with concrete next steps:</p>\n"
+            "<p>Where the data is — and isn't. Specific aspects of your brief that "
+            "the candidate set doesn't cover, with concrete next steps to close "
+            "each gap:</p>\n"
         )
     else:
         buf.write("<p>Aspects worth augmenting:</p>\n")
+    buf.write(
+        '<table class="gaps-table">\n'
+        "<thead><tr>"
+        '<th class="gaps-table__aspect">Aspect</th>'
+        '<th class="gaps-table__gap">What\'s missing</th>'
+        '<th class="gaps-table__step">Next step</th>'
+        "</tr></thead>\n<tbody>\n"
+    )
     for gap in result.coverage.semantic_gaps:
-        buf.write(f"<h3>{escape(gap.aspect)}</h3>\n")
-        buf.write(f"<p>{escape(gap.description)}</p>\n")
-        buf.write(f'<p><b>→ Next step:</b> {escape(gap.suggestion)}</p>\n')
+        buf.write(
+            "<tr>"
+            f'<td class="gaps-table__aspect"><b>{escape(gap.aspect)}</b></td>'
+            f'<td class="gaps-table__gap">{escape(gap.description)}</td>'
+            f'<td class="gaps-table__step">{escape(gap.suggestion)}</td>'
+            "</tr>\n"
+        )
+    buf.write("</tbody></table>\n")
 
 
 def _write_decomposition_section(buf: StringIO, result: ReconResult) -> None:
@@ -681,10 +922,31 @@ def _write_candidates_section(
     buf: StringIO, result: ReconResult, ctx: ReconReportContext
 ) -> None:
     if ctx.has_strategies:
+        # Per UX feedback: render the actually-useful groups as full
+        # cards, then collapse the "not useful / unassessed" bucket
+        # to a single one-liner. The full list is still in
+        # results.json for anyone debugging.
+        not_useful_count = 0
         for group in ctx.groups:
             if group.count == 0:
                 continue
+            if group.key == "not_useful":
+                not_useful_count = group.count
+                continue
             _write_strategy_group(buf, group)
+        if not_useful_count > 0:
+            buf.write(
+                '<aside class="not-useful-note">\n'
+                f'  <span class="not-useful-note__count">{not_useful_count}</span>\n'
+                "  <span>"
+                "additional candidate(s) judged "
+                "<b>not useful</b> by the strategy assessor or returned "
+                "without an assessment. Hidden from the report to keep the "
+                "signal-to-noise ratio high; full list in "
+                "<code>results.json</code>."
+                "</span>\n"
+                "</aside>\n"
+            )
         return
 
     # Fallback: pre-strategy mode (metadata-only / discovery-only).
