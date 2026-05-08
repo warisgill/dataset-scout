@@ -12,7 +12,7 @@ from dataset_scout.render.html_report import (
     render_recon_report_html,
     write_recon_report_html,
 )
-from dataset_scout.tour import build_tour_result
+from tests._fakes.recon_fixture import build_demo_recon_result
 
 pytestmark = pytest.mark.unit
 
@@ -60,11 +60,11 @@ def _validate_html(html: str) -> None:
     assert not validator.stack, f"unclosed tags: {validator.stack}"
 
 
-# ─── tests against the tour fixture ────────────────────────────────
+# ─── tests against the demo fixture ────────────────────────────────
 
 
-def test_renders_well_formed_html_for_tour_result():
-    result = build_tour_result()
+def test_renders_well_formed_html_for_demo_result():
+    result = build_demo_recon_result()
     html = render_recon_report_html(result)
     assert html.startswith("<!doctype html>")
     assert "<title>" in html
@@ -73,7 +73,7 @@ def test_renders_well_formed_html_for_tour_result():
 
 
 def test_includes_brief_section():
-    result = build_tour_result()
+    result = build_demo_recon_result()
     html = render_recon_report_html(result)
     assert "Brief" in html
     assert result.intent.raw_brief in html
@@ -81,12 +81,12 @@ def test_includes_brief_section():
 
 def test_html_card_title_links_to_dataset():
     """Per UX feedback: card title is a clickable link to the dataset card."""
-    result = build_tour_result()
+    result = build_demo_recon_result()
     html = render_recon_report_html(result)
     # The candidate__title-link wraps rank + verdict + id in an <a> with
     # href pointing to the upstream dataset card.
     assert 'class="candidate__title-link"' in html
-    # Tour fixture's first card url should be referenced.
+    # Demo fixture's first card url should be referenced.
     first = result.candidates[0].candidate.metadata.card_url
     assert first is not None
     assert f'href="{first}"' in html
@@ -94,7 +94,7 @@ def test_html_card_title_links_to_dataset():
 
 def test_html_card_details_are_collapsed_by_default():
     """Per UX feedback: rationale + transform + caveats are collapsed."""
-    result = build_tour_result()
+    result = build_demo_recon_result()
     html = render_recon_report_html(result)
     # Each assessed card has a <details class="candidate__details"> block
     # for the long-form rationale/caveats/transform.
@@ -105,7 +105,7 @@ def test_html_card_details_are_collapsed_by_default():
 
 def test_html_decomposition_and_papers_are_collapsed():
     """Heavy investigative sections wrapped in <details> by default."""
-    result = build_tour_result()
+    result = build_demo_recon_result()
     html = render_recon_report_html(result)
     # Both sections share the collapsed-section class.
     assert 'class="collapsed-section"' in html
@@ -116,7 +116,7 @@ def test_html_decomposition_and_papers_are_collapsed():
 
 def test_html_run_summary_compact_at_top():
     """Compact run summary lives near the top, before candidates."""
-    result = build_tour_result()
+    result = build_demo_recon_result()
     html = render_recon_report_html(result)
     # Position check: run-summary-compact must appear before the
     # first candidate__title-link (and before Decomposition).
@@ -131,7 +131,7 @@ def test_html_run_summary_compact_at_top():
 
 def test_html_compact_meta_replaces_snapshot_list():
     """Old bulleted snapshot list is gone; compact meta paragraph replaces it."""
-    result = build_tour_result()
+    result = build_demo_recon_result()
     html = render_recon_report_html(result)
     assert "candidate__meta" in html
     # Old snapshot class should not be emitted anymore.
@@ -140,7 +140,7 @@ def test_html_compact_meta_replaces_snapshot_list():
 
 def test_html_card_doesnt_reproduce_card_url_in_body():
     """Avoid rendering the dataset URL twice — once in title link is enough."""
-    result = build_tour_result()
+    result = build_demo_recon_result()
     html = render_recon_report_html(result)
     # The header link contains the URL. The body should NOT have a
     # second 🔗 / Card: line; that was the verbose old layout.
@@ -154,7 +154,7 @@ def test_html_card_doesnt_reproduce_card_url_in_body():
 
 
 def test_lists_all_candidates_with_card_links():
-    result = build_tour_result()
+    result = build_demo_recon_result()
     html = render_recon_report_html(result)
     assert "Candidates" in html
     for sc in result.candidates:
@@ -164,15 +164,15 @@ def test_lists_all_candidates_with_card_links():
 
 
 def test_renders_strategies_when_assessed():
-    result = build_tour_result()
+    result = build_demo_recon_result()
     html = render_recon_report_html(result)
-    # The tour result has strategy assessments; expect kind labels.
+    # The demo result has strategy assessments; expect kind labels.
     assert "direct use" in html or "signal proxy" in html
     assert "confidence" in html
 
 
 def test_renders_coverage_gaps_when_present():
-    result = build_tour_result()
+    result = build_demo_recon_result()
     if result.coverage and result.coverage.semantic_gaps:
         html = render_recon_report_html(result)
         for gap in result.coverage.semantic_gaps:
@@ -181,7 +181,7 @@ def test_renders_coverage_gaps_when_present():
 
 def test_html_header_includes_crisp_wordmark():
     """Header is a clean typographic h1 (no ASCII art)."""
-    result = build_tour_result()
+    result = build_demo_recon_result()
     html = render_recon_report_html(result)
     assert "report-hero" in html
     assert 'class="report-hero__title"' in html
@@ -193,7 +193,7 @@ def test_html_header_includes_crisp_wordmark():
 
 def test_html_brief_renders_as_hero_blockquote():
     """Round-2: the brief is highlighted as a quoted hero block, not a tiny header."""
-    result = build_tour_result()
+    result = build_demo_recon_result()
     html = render_recon_report_html(result)
     assert 'class="brief-hero"' in html
     assert 'class="brief-hero__text"' in html
@@ -203,7 +203,7 @@ def test_html_brief_renders_as_hero_blockquote():
 
 def test_html_gaps_render_as_table_when_present():
     """Round-2: sourcing roadmap is a scannable table, not a stack of headings."""
-    result = build_tour_result()
+    result = build_demo_recon_result()
     if result.coverage and result.coverage.semantic_gaps:
         html = render_recon_report_html(result)
         assert '<table class="gaps-table">' in html
@@ -212,9 +212,9 @@ def test_html_gaps_render_as_table_when_present():
 
 def test_html_collapses_not_useful_into_single_note():
     """Round-2: 'not useful' candidates collapse into one aside, not card grid."""
-    result = build_tour_result()
+    result = build_demo_recon_result()
     html = render_recon_report_html(result)
-    # If the tour fixture has any not_useful candidates, they should NOT be
+    # If the Demo fixture has any not_useful candidates, they should NOT be
     # rendered as full cards. We assert the consolidated note is present
     # whenever any candidate has a 'not_useful' verdict.
     from dataset_scout.render._view import ReconReportContext
@@ -228,7 +228,7 @@ def test_html_collapses_not_useful_into_single_note():
 
 def test_html_escaping_blocks_brief_xss():
     """A brief containing HTML metacharacters is escaped, not injected."""
-    result = build_tour_result()
+    result = build_demo_recon_result()
     # Mutate the intent's raw_brief to include payload; Pydantic v2
     # frozen models support model_copy.
     result = result.model_copy(
@@ -240,7 +240,7 @@ def test_html_escaping_blocks_brief_xss():
 
 
 def test_write_recon_report_html_creates_file(tmp_path):
-    result = build_tour_result()
+    result = build_demo_recon_result()
     path = write_recon_report_html(result, tmp_path)
     assert path.exists()
     assert path.name == "report.html"
@@ -251,12 +251,12 @@ def test_write_recon_report_html_creates_file(tmp_path):
 # ─── view-context tests ────────────────────────────────────────────
 
 
-def test_view_context_from_tour_result():
+def test_view_context_from_demo_result():
     """The shared view-model derives consistent flags from a real result."""
-    result = build_tour_result()
+    result = build_demo_recon_result()
     ctx = ReconReportContext.from_result(result)
     assert ctx.n_candidates == len(result.candidates)
-    # Tour has strategies + decomposition + gaps (mini-recon shape).
+    # Demo fixture has strategies + decomposition + gaps (mini-recon shape).
     assert ctx.has_strategies is True
     assert ctx.has_decomposition is True
 
@@ -315,7 +315,7 @@ def test_includes_label_intent_fit_in_badge_when_present():
     """If a scorecard has label_intent_fit, the HTML surfaces a semantic-fit badge."""
     from dataset_scout.core import Evidence, SubScore
 
-    result = build_tour_result()
+    result = build_demo_recon_result()
     sc = result.candidates[0]
     sc.label_intent_fit = SubScore(
         value=0.72,

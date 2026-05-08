@@ -1,19 +1,17 @@
-"""`datascout tour` — 30-second demo with no external services.
+"""Canned `ReconResult` fixture for renderer / report tests.
 
-Recommendation C from the threat-intel walkthrough. Lets a new user
-see the full value of dataset-scout without configuring HuggingFace
-or Azure OpenAI: canned candidates + canned LLM responses, real
-report rendering, ~30 seconds end-to-end.
+Used by `test_html_report`, `test_report_redesign`, and the render
+round-trip tests in `test_cli`. Mirrors a realistic mini-recon for
+an over-refusal detection program so renderer assertions can exercise
+all sections (decomposition, candidates with strategies, coverage
+gaps, notices).
 
-The fixture mirrors a realistic mini-recon for an over-refusal
-detection program. It exists in code (no on-disk fixtures) so the
-demo can run from a `uv tool install` with zero project state.
+Test infrastructure only — no production code path imports this.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 from dataset_scout.core import (
     Candidate,
@@ -34,8 +32,8 @@ from dataset_scout.core import (
 _NOW = datetime.now(UTC)
 
 
-def build_tour_result() -> ReconResult:
-    """Construct a fully-populated `ReconResult` for demo purposes."""
+def build_demo_recon_result() -> ReconResult:
+    """Construct a fully-populated `ReconResult` for renderer tests."""
     intent = Intent(
         raw_brief="refusal-labeled corpora for customer-support agents",
         detection_target="over-refusal in customer support",
@@ -179,12 +177,11 @@ def build_tour_result() -> ReconResult:
     return ReconResult(
         intent=intent,
         candidates=candidates,
-        sources_searched=["huggingface (canned tour fixture)"],
+        sources_searched=["huggingface (canned demo fixture)"],
         coverage=coverage,
         elapsed_seconds=0.42,
         notices=[
-            "Tour fixture: candidates and strategies are canned demo data, not a real recon. "
-            'Run `datascout recon "..."` against your AOAI deployment for real output.'
+            "Demo fixture: candidates and strategies are canned data for renderer tests, not a real recon."
         ],
     )
 
@@ -269,30 +266,3 @@ def _strategy(
             },
         ),
     )
-
-
-def render_tour(out_dir: Path | None = None) -> str:
-    """Render the tour fixture as a Markdown report.
-
-    When `out_dir` is provided, also persist `report.md`,
-    `results.json`, `recipe.draft.yaml`, and `decomposition.yaml`
-    so the user can poke at the full set of artefacts.
-    """
-    from dataset_scout.decomposition_io import write_decomposition
-    from dataset_scout.recipe_draft import write_recipe_draft
-    from dataset_scout.render import (
-        render_recon_report,
-        write_recon_report,
-        write_recon_report_html,
-        write_results_json,
-    )
-
-    result = build_tour_result()
-    if out_dir is not None:
-        write_results_json(result, out_dir)
-        write_recon_report(result, out_dir)
-        write_recon_report_html(result, out_dir)
-        write_recipe_draft(result, out_dir)
-        if result.coverage:
-            write_decomposition(result.coverage.decomposition, out_dir)
-    return render_recon_report(result)

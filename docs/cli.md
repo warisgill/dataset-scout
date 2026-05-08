@@ -16,9 +16,8 @@ section of [architecture.md](architecture.md)).
 
 | Verb | What it does | Cost |
 |---|---|---|
-| [`tour`](#tour) | Render a fully-populated demo report from canned data | none — no AOAI/HF |
 | [`decompose`](#decompose) | LLM brief decomposition only (cheap iteration loop) | ~5s, 1 LLM call |
-| [`recon`](#recon) | Full pipeline → `report.md` + `results.json` + `recipe.draft.yaml` + `decomposition.yaml` | ~2 min, ~16 LLM calls |
+| [`recon`](#recon) | Full pipeline → `report.html` + `report.md` + `results.json` + `recipe.draft.yaml` + `decomposition.yaml` | ~2 min, ~16 LLM calls |
 | [`inspect`](#inspect) | One-candidate deep-dive | ~5s + optional 1 LLM call |
 | [`curate`](#curate) | Recipe → JSONL + lockfile | depends on row count |
 | [`judge`](#judge) | Promote weak labels to high-confidence ones with an LLM judge (M10) | 1 LLM call per non-ground-truth row × `--judges` |
@@ -26,26 +25,6 @@ section of [architecture.md](architecture.md)).
 | [`compose`](#compose) | Merge multiple recipes into one | none — local |
 | [`cache`](#cache) | Inspect / prune / clear the cache | local |
 | [`sources`](#sources) | List / toggle source plugins | local |
-
----
-
-## `tour`
-
-A 30-second demo with **no external services**: no HuggingFace token,
-no Azure OpenAI configuration. The command renders a fully-populated
-recon report from canned data so a new user can see the value
-immediately.
-
-```bash
-datascout tour                # → stdout
-datascout tour --out scratch  # → also persist artefacts
-```
-
-| Option | Description |
-|---|---|
-| `--out PATH` | Persist the demo's `results.json`, `recipe.draft.yaml`, `decomposition.yaml`, `report.md`. |
-
-Use this in PRs, slack messages, or first-time onboarding.
 
 ---
 

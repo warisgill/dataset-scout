@@ -2,7 +2,7 @@
 
 <p align="center">
   <em>Your dataset-discovery teammate.</em><br>
-  Tell it what you need. Get back a curated corpus — with receipts — in minutes.
+  Tell it what you need. Get back a recon report you can ship to your team — with receipts — in minutes.
 </p>
 
 <p align="center">
@@ -17,29 +17,51 @@
 ML practitioners spend hours hand-searching HuggingFace for datasets
 that fit a problem — then second-guessing whether the creative
 reframings they have in mind actually hold up. `dataset-scout` runs
-that loop for you and hands back a curated corpus with receipts:
-every claim ties back to a card, a column, and a sample row.
+that loop for you and hands back a **recon report**: every candidate
+ranked by strategy fit, every claim tied back to a card, a column,
+and a sample row.
 
 ---
 
-## See it in 30 seconds
+## What you get back: the recon report
 
-No HuggingFace token. No Azure OpenAI key. Zero setup:
+`datascout recon "your brief"` produces a self-contained
+**`report.html`** (plus a Markdown twin for PRs and audit trails)
+that summarizes everything the pipeline learned about candidate
+datasets for your problem.
 
-```bash
-uvx --from git+https://github.com/mdressman/dataset-scout dataset-scout tour
-```
+> 📄 **[See an example →](https://htmlpreview.github.io/?https://github.com/mdressman/dataset-scout/blob/main/docs/example-report.html)** —
+> a real recon for a *"Claiming to be Capable of Relationship
+> Development"* psych-risk-factor brief. Open it in your browser to
+> see the actual output shape. (Or clone the repo and open
+> `docs/example-report.html` directly.)
 
-A complete recon report — decomposition, reframings, coverage gaps,
-candidates ranked by fit — for an over-refusal detection program,
-rendered to your terminal in under a second from canned demo data.
-Add `--out scratch/` to also drop the full set of artefacts
-(`results.json`, `recipe.draft.yaml`, `decomposition.yaml`, `report.md`)
-on disk so you can poke them.
+What's in the report:
+
+- 🎯 **Candidate cards grouped by strategy kind** — direct fits,
+  reframings, signal proxies, benign baselines — with rationale,
+  **real column names**, sample-row evidence, license + freshness
+  badges, and per-strategy confidence.
+- 📋 **At-a-glance scoreboard** — verdict mix in 5 seconds.
+- 🧭 **Sourcing roadmap / coverage gaps** — leads the report when
+  your brief is in frontier territory and HF coverage is sparse
+  (sparse coverage is a deliverable, not a failure).
+- 🔁 **Decomposition** — the LLM's expansion of your brief into
+  search directions, collapsed but inspectable.
+- 📚 **Related papers** from NeurIPS / ICML / ICLR / SaTML / arXiv
+  — with the HF/Kaggle datasets they cite already promoted into the
+  candidate pool with paper provenance.
+- 🧾 **Recipe preview** — the bridge to an optional downstream
+  corpus build (see *Bridge to a corpus*, below).
+
+The HTML is self-contained: embedded CSS, no JavaScript, no external
+assets. Open it offline, attach it to a ticket, paste it into a doc.
+The Markdown twin renders from the same view-model so the two can't
+drift — pick whichever channel fits the audience.
 
 ---
 
-## End-to-end in 5 minutes
+## The loop
 
 ```bash
 az login                                                     # Entra auth for AOAI
@@ -49,33 +71,15 @@ echo "AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini"                  >> .env
 # 1. Iterate on the brief cheaply (~5s, one LLM call)
 datascout decompose "your brief here" --out scratch/
 
-# 2. When the directions look right, run the full recon
-#    Reusing the decomposition skips re-paying for it.
+# 2. When the directions look right, run the full recon (~2 min)
 datascout recon "your brief here" \
     --decomposition-from scratch/decomposition.yaml \
     --out scratch/recon/
-
-# 3. Materialize the corpus straight from the draft recipe.
-#    Recipes ship with REAL column names — no hand-editing required.
-datascout curate --from scratch/recon/recipe.draft.yaml \
-    --out ./mycorpus
+# → scratch/recon/report.html      ← open this
+# → scratch/recon/report.md        ← share this in PRs / Slack
+# → scratch/recon/results.json     ← machine-readable
+# → scratch/recon/recipe.draft.yaml + decomposition.yaml
 ```
-
-> **⚠️ `curate` is experimental — output not yet end-to-end validated.**
-> The pipeline ships a working implementation with a full audit
-> trail (lockfile, MinHash dedup, leakage-aware splits, per-component
-> soft-failure classification), **but the author hasn't yet
-> personally trained a model on a scout-curated corpus and confirmed
-> quality vs a hand-built one.** Treat the output as a starting
-> point: inspect rows, sanity-check splits and label distributions,
-> compare against your own gold before training. Bug reports and PRs
-> that harden this pipeline are *very* welcome — please file issues
-> or open a PR.
-
-You end up with a six-file corpus: leakage-aware train / val / test
-splits, a `recipe.lock.yaml` audit trail, a 5-second scorecard report,
-a deterministic fingerprint, and ready-to-paste snippets for HF
-`datasets`, pandas, and raw JSONL.
 
 > **Tip:** `decompose` is the cheap brief-iteration loop. Use it to
 > refine your brief before paying for the full ~2-minute recon.
@@ -87,25 +91,50 @@ a deterministic fingerprint, and ready-to-paste snippets for HF
 Three things you don't get from a tab full of HuggingFace search
 results:
 
-1. **Reframings, not just matches.** Each candidate gets ranked
-   strategies — *direct fit*, *subset extraction*, *signal proxy*,
-   *benign baseline* — with rationale, caveats, and a transform
-   spec. On novel briefs the typical shape is zero direct fits plus
-   a defensible stack of reframings, and that's the deliverable.
+1. **Reframings, not just matches.** Each candidate card in the
+   report carries ranked strategies — *direct fit*, *subset
+   extraction*, *signal proxy*, *benign baseline* — with rationale,
+   caveats, and a transform spec. On novel briefs the typical shape
+   is zero direct fits plus a defensible stack of reframings, and
+   that's the deliverable.
 
-2. **Recipes ship `curate`-ready.** Strategy assessment reads actual
-   rows before writing the transform, so `recipe.draft.yaml` carries
-   real column names and label values — no placeholder
-   whack-a-mole between recon and corpus.
+2. **Receipts everywhere.** Strategy assessment reads **real rows**
+   from each candidate before writing the rationale, so the report
+   references actual column names and label values (no
+   `prompt_or_response_equivalent` placeholders). Every claim ties
+   back to a card, a column, and a sample.
 
 3. **Coverage gaps are first-class output.** When the data isn't
-   there, scout leads with what's missing and where to look next.
-   Sparse coverage is a deliverable, not a failure.
+   there, the report leads with what's missing and where to look
+   next — sourcing roadmap, not failure mode.
 
 Discovery spans HuggingFace, Kaggle, and academic papers from
 NeurIPS / ICML / ICLR / SaTML and other venues — HF/Kaggle URLs
 found in paper abstracts are promoted into the candidate pool with
 paper provenance.
+
+---
+
+## Bridge to a corpus *(experimental)*
+
+Every recon also writes a `recipe.draft.yaml` with the same real
+column names the report references. If you want to materialize a
+JSONL corpus from it:
+
+```bash
+datascout curate --from scratch/recon/recipe.draft.yaml --out ./mycorpus
+```
+
+> **⚠️ `curate` is experimental — output not yet end-to-end validated.**
+> The pipeline ships a working implementation with a full audit
+> trail (lockfile, MinHash dedup, leakage-aware splits, per-component
+> soft-failure classification), but the author hasn't yet trained a
+> model on a scout-curated corpus and confirmed quality vs a
+> hand-built reference. **The recon report is the value-prop today.**
+> Treat curate output as a starting point, sanity-check rows and
+> label distributions, and please file issues or PRs if you harden
+> the pipeline. Same caveat applies to the optional `judge` / `eval`
+> flow downstream.
 
 ---
 
@@ -134,10 +163,8 @@ loop generalizes.
 ## Documentation
 
 - **[Getting started](docs/getting-started.md)** — install, configure,
-  run the demo, run the loop end-to-end, with the over-refusal
-  detection scenario as the working example.
-- **[Hero demo script](docs/demo.md)** — the 7-minute, three-beat
-  walkthrough for showing dataset-scout to a team for the first time.
+  run the loop end-to-end, with the over-refusal detection scenario
+  as the working example.
 - **[Concepts](docs/concepts.md)** — the mental model: **how to write
   a good brief**, the strategy taxonomy, label kinds, modes, recipes
   and lockfiles.
@@ -156,12 +183,9 @@ Two equivalent CLI entry points: `dataset-scout` (formal) and
 `datascout` (recommended short form).
 
 ```bash
-# As a one-off, straight from GitHub (no clone, no PyPI):
-uvx --from git+https://github.com/mdressman/dataset-scout dataset-scout tour
-
-# Or install as a uv tool, alias-friendly:
+# Install as a uv tool, straight from GitHub (no clone, no PyPI):
 uv tool install git+https://github.com/mdressman/dataset-scout
-datascout tour
+datascout --help
 
 # Or developer install:
 git clone https://github.com/mdressman/dataset-scout
@@ -172,16 +196,17 @@ uv run datascout --help
 
 Python 3.11+. Not on PyPI yet — `uv add dataset-scout` will work
 once published; until then use the `git+` URL above. Heavy deps
-(litellm, azure-identity, datasets) load lazily — `tour` and
-metadata-only runs cost no LLM-import overhead.
+(litellm, azure-identity, datasets) load lazily — metadata-only
+runs cost no LLM-import overhead.
 
 ---
 
 ## Advanced features
 
-The three-verb core is `tour` / `recon` / `curate` (plus `decompose`
-as the cheap-iter helper). The rest of the surface is for specific
-needs:
+`recon` is the headline verb — it produces the report. `decompose`
+is the cheap brief-iteration helper, and `curate` is the
+*experimental* downstream step. The rest of the surface is for
+specific needs:
 
 - **`datascout inspect <source>:<id>`** — single-candidate deep-dive:
   schema from a streamed sample, label distribution with Wilson 95% CIs,

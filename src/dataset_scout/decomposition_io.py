@@ -32,7 +32,7 @@ def write_decomposition(directions: list[DecompositionDirection], out: Path) -> 
     """Write decomposition YAML.
 
     `out` may be either a directory (in which case the file is written
-    as ``<out>/decomposition.yaml`` — what `recon` and `tour` pass)
+    as ``<out>/decomposition.yaml`` — what `recon` passes)
     or an explicit ``.yaml``/``.yml`` file path (what users typically
     pass to ``datascout decompose --out``). Heuristic: a path with a
     ``.yaml``/``.yml`` suffix is treated as a file, anything else as

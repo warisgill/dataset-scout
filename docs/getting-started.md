@@ -2,31 +2,6 @@
 
 A walkthrough from zero to a curated corpus, end to end.
 
-## 0. See it in 30 seconds (no setup)
-
-Before you configure anything, see what dataset-scout produces:
-
-```bash
-uvx --from git+https://github.com/mdressman/dataset-scout dataset-scout tour
-```
-
-A complete recon report — decomposition, strategies, coverage gaps,
-candidates ranked by reframing strength — for an over-refusal
-detection program, rendered in <1s from canned demo data. No
-HuggingFace token, no Azure OpenAI, no waiting.
-
-```bash
-uvx --from git+https://github.com/mdressman/dataset-scout dataset-scout tour --out scratch/
-```
-
-…also persists `results.json`, `recipe.draft.yaml`,
-`decomposition.yaml`, and `report.md` so you can poke at the full
-output shape.
-
-When you're ready, give it a real brief.
-
----
-
 ## The scenario
 
 You're the detection lead at a B2B SaaS that ships an AI customer-

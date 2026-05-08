@@ -20,7 +20,7 @@ from dataset_scout.render._view import (
     ReconReportContext,
     _verdict_for,
 )
-from dataset_scout.tour import build_tour_result
+from tests._fakes.recon_fixture import build_demo_recon_result
 
 pytestmark = pytest.mark.unit
 
@@ -211,7 +211,7 @@ def test_recipe_preview_empty_when_no_qualifying_components():
 def test_md_render_uses_groupings_and_verdicts():
     from dataset_scout.render.markdown_report import render_recon_report
 
-    md = render_recon_report(build_tour_result())
+    md = render_recon_report(build_demo_recon_result())
     # Grouped sections.
     assert "## At a glance" in md
     assert "🎯 Direct fits" in md or "Direct fits" in md
@@ -227,7 +227,7 @@ def test_md_render_uses_groupings_and_verdicts():
 def test_html_render_uses_groupings_and_recipe_preview():
     from dataset_scout.render.html_report import render_recon_report_html
 
-    html = render_recon_report_html(build_tour_result())
+    html = render_recon_report_html(build_demo_recon_result())
     # Scoreboard pills.
     assert 'class="scoreboard"' in html
     assert 'class="pill pill--direct_fit"' in html
@@ -244,7 +244,7 @@ def test_html_no_colored_license_badges():
     """Per user feedback: the green/orange license badges added confusion."""
     from dataset_scout.render.html_report import render_recon_report_html
 
-    html = render_recon_report_html(build_tour_result())
+    html = render_recon_report_html(build_demo_recon_result())
     # The old badge--good / badge--warn classes are no longer applied
     # to license rows; license is plain text in the snapshot.
     # We don't strictly test absence (the class declaration may still

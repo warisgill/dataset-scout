@@ -1,0 +1,2383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dataset-scout: Claiming to be Capable of Relationship Development. The AI implies formation of a personal relationship, emotional bond,</title>
+<style>
+
+:root {
+  --fg: #1f2328;
+  --fg-muted: #57606a;
+  --bg: #ffffff;
+  --bg-muted: #f6f8fa;
+  --border: #d0d7de;
+  --accent: #0969da;
+  --good: #1f883d;
+  --warn: #bf8700;
+  --bad: #cf222e;
+  --neutral: #57606a;
+  --proxy: #8250df;
+  --benign: #218bff;
+  --code-bg: #f6f8fa;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #c9d1d9;
+    --fg-muted: #8b949e;
+    --bg: #0d1117;
+    --bg-muted: #161b22;
+    --border: #30363d;
+    --accent: #58a6ff;
+    --good: #56d364;
+    --warn: #e3b341;
+    --bad: #ff7b72;
+    --neutral: #8b949e;
+    --proxy: #d2a8ff;
+    --benign: #79c0ff;
+    --code-bg: #161b22;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.55;
+  font-size: 16px;
+}
+.container { max-width: 920px; margin: 0 auto; padding: 32px 24px 80px; }
+h1, h2, h3 { line-height: 1.25; margin-top: 1.5em; }
+h1 {
+  font-size: 2.1rem;
+  font-weight: 700;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 0.35em;
+  letter-spacing: -0.01em;
+}
+h2 {
+  font-size: 1.55rem;
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.25em;
+  letter-spacing: -0.005em;
+}
+h3 { font-size: 1.15rem; font-weight: 600; }
+p { margin: 0.6em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+              background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 3px;
+              font-size: 0.92em; }
+.callout {
+  border-left: 4px solid var(--accent);
+  background: var(--bg-muted);
+  padding: 14px 18px;
+  border-radius: 6px;
+  margin: 1em 0;
+}
+.callout--warn { border-left-color: var(--warn); }
+.callout--bad { border-left-color: var(--bad); }
+.callout--good { border-left-color: var(--good); }
+.callout--info { border-left-color: var(--accent); }
+.callout--proxy { border-left-color: var(--proxy); }
+.callout strong { display: block; margin-bottom: 0.25em; }
+.muted { color: var(--fg-muted); }
+.small { font-size: 0.88em; }
+
+/* ─── Report hero (crisp typographic header) ──────────────────── */
+.report-hero {
+  margin: 0 0 1.25em;
+  padding: 28px 0 20px;
+  border-bottom: 1px solid var(--border);
+}
+.report-hero__title {
+  margin: 0;
+  font-size: clamp(1.6rem, 2.6vw + 0.6rem, 2.4rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4em;
+}
+.report-hero__product { color: var(--accent); }
+.report-hero__sep {
+  color: var(--fg-muted);
+  font-weight: 400;
+}
+.report-hero__verb {
+  color: var(--fg);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.62em;
+  letter-spacing: 0.14em;
+  padding: 4px 10px;
+  background: var(--bg-muted);
+  border-radius: 4px;
+}
+.report-hero__tagline {
+  margin: 8px 0 0;
+  color: var(--fg-muted);
+  font-size: 0.98em;
+}
+
+/* ─── Brief hero (the user's input, prominent) ─────────────────── */
+.brief-hero {
+  margin: 1.5em 0 2em;
+  padding: 22px 26px;
+  background: var(--bg-muted);
+  border-radius: 8px;
+  border-left: 4px solid var(--accent);
+  position: relative;
+}
+.brief-hero__label {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  padding: 2px 10px;
+  border-radius: 3px;
+  margin-bottom: 10px;
+}
+.brief-hero__text {
+  margin: 0;
+  padding: 0;
+  font-size: 1.18em;
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--fg);
+  border: none;
+  font-style: normal;
+  /* Rely on the side rule of .brief-hero for visual emphasis. */
+}
+.brief-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.brief-hero__pill {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 0.88em;
+  color: var(--fg);
+}
+.brief-hero__pill-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82em;
+  font-weight: 600;
+  color: var(--fg-muted);
+  letter-spacing: 0.05em;
+}
+
+/* ─── Compact run summary at top ──────────────────────────────── */
+.run-summary-compact {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline;
+  padding: 10px 14px;
+  background: var(--bg-muted);
+  border-radius: 6px;
+  margin: 0.6em 0;
+  font-size: 0.95em;
+}
+.run-summary-compact b { font-weight: 600; color: var(--fg); }
+.notices-details { margin: 6px 0 1em; font-size: 0.92em; }
+.notices-details summary { cursor: pointer; }
+.notices-details ul { margin: 6px 0 0; padding-left: 22px; }
+
+/* ─── Collapsed sections (Decomposition + Papers) ─────────────── */
+.collapsed-section {
+  margin: 1.5em 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-muted);
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+.collapsed-section[open] {
+  border-color: var(--accent);
+  background: var(--bg);
+}
+.collapsed-section > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  user-select: none;
+  background: var(--bg-muted);
+  border-radius: 8px;
+}
+.collapsed-section[open] > summary {
+  border-bottom: 1px solid var(--border);
+  border-radius: 8px 8px 0 0;
+}
+.collapsed-section > summary:hover {
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-muted));
+}
+.collapsed-section > summary::-webkit-details-marker { display: none; }
+.collapsed-section > summary::before {
+  content: "▸";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; height: 22px;
+  flex-shrink: 0;
+  color: var(--accent);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.7em;
+  transition: transform 0.15s ease;
+}
+.collapsed-section[open] > summary::before {
+  content: "▾";
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.collapsed-section > summary::after {
+  content: "Click to expand";
+  margin-left: auto;
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.collapsed-section[open] > summary::after { content: "Click to collapse"; }
+.collapsed-section > :not(summary) {
+  padding: 0 18px;
+}
+.collapsed-section > :not(summary):last-child { padding-bottom: 16px; }
+.collapsed-section > :not(summary):first-of-type { padding-top: 16px; }
+.inline-h2 {
+  display: inline;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+/* ─── At-a-glance scoreboard ──────────────────────────────────── */
+.scoreboard { margin: 1.5em 0; }
+.scoreboard__pills {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  margin: 12px 0;
+}
+.pill {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.95em;
+  border: 1px solid var(--border);
+  background: var(--bg-muted);
+  color: var(--fg);
+}
+.pill b { font-size: 1.1em; }
+.pill--direct_fit { border-left: 4px solid var(--good); padding-left: 12px; }
+.pill--reframing { border-left: 4px solid var(--accent); padding-left: 12px; }
+.pill--signal_proxy { border-left: 4px solid var(--proxy); padding-left: 12px; }
+.pill--benign_baseline { border-left: 4px solid var(--benign); padding-left: 12px; }
+.pill--not_useful { border-left: 4px solid var(--neutral); padding-left: 12px; opacity: 0.7; }
+.scoreboard__note {
+  font-size: 0.92em; color: var(--fg-muted); font-style: italic;
+}
+
+/* ─── Strategy-grouped sections ───────────────────────────────── */
+.group { margin: 2em 0; }
+.group__head {
+  border-left: 6px solid var(--neutral);
+  padding-left: 14px;
+  margin-bottom: 18px;
+}
+.group--direct_fit .group__head { border-left-color: var(--good); }
+.group--reframing .group__head { border-left-color: var(--accent); }
+.group--signal_proxy .group__head { border-left-color: var(--proxy); }
+.group--benign_baseline .group__head { border-left-color: var(--benign); }
+.group--not_useful .group__head { border-left-color: var(--neutral); opacity: 0.7; }
+.group__title { margin: 0; border: none; padding: 0; font-size: 1.45rem; }
+.group__count { color: var(--fg-muted); font-weight: 400; font-size: 0.9em; }
+.group__desc { color: var(--fg-muted); font-size: 0.95em; margin: 4px 0 0; }
+
+/* ─── Candidate card ──────────────────────────────────────────── */
+.candidate {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--neutral);
+  border-radius: 6px;
+  padding: 18px 22px;
+  margin: 14px 0;
+  background: var(--bg);
+}
+.candidate--direct_use { border-left-color: var(--good); }
+.candidate--subset_extraction { border-left-color: var(--accent); }
+.candidate--label_remapping { border-left-color: var(--accent); }
+.candidate--cross_class_repurposing { border-left-color: var(--proxy); }
+.candidate--signal_proxy { border-left-color: var(--proxy); }
+.candidate--benign_baseline { border-left-color: var(--benign); }
+.candidate--not_useful { border-left-color: var(--neutral); opacity: 0.75; }
+.candidate--unscored { border-left-color: var(--neutral); }
+
+.candidate__head {
+  margin-bottom: 6px;
+}
+.candidate__title-link {
+  display: flex; flex-wrap: wrap; gap: 8px 14px;
+  align-items: baseline;
+  text-decoration: none;
+  color: inherit;
+  padding: 4px 0;
+  border-radius: 4px;
+}
+.candidate__title-link:hover {
+  text-decoration: none;
+}
+.candidate__title-link:hover .candidate__id {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.candidate__title-link::after {
+  content: "↗";
+  color: var(--fg-muted);
+  font-size: 0.85em;
+  margin-left: auto;
+  opacity: 0.6;
+  align-self: center;
+}
+.candidate__rank {
+  font-weight: 600;
+  color: var(--fg-muted);
+  font-size: 0.78em;
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+  letter-spacing: 0.04em;
+}
+.candidate__verdict {
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 4px;
+  background: var(--bg-muted);
+  font-size: 0.78em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.candidate__verdict--direct_use { color: var(--good); background: color-mix(in srgb, var(--good) 12%, var(--bg)); }
+.candidate__verdict--subset_extraction,
+.candidate__verdict--label_remapping { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg)); }
+.candidate__verdict--cross_class_repurposing,
+.candidate__verdict--signal_proxy { color: var(--proxy); background: color-mix(in srgb, var(--proxy) 12%, var(--bg)); }
+.candidate__verdict--benign_baseline { color: var(--benign); background: color-mix(in srgb, var(--benign) 12%, var(--bg)); }
+.candidate__verdict--not_useful { color: var(--neutral); background: var(--bg-muted); opacity: 0.85; }
+.candidate__id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.18em;
+  font-weight: 700;
+  color: var(--fg);
+  letter-spacing: -0.005em;
+}
+
+.candidate__lede {
+  font-size: 1.02em;
+  margin: 6px 0 4px;
+  color: var(--fg);
+}
+.candidate__use-as {
+  font-size: 0.95em;
+  margin: 4px 0;
+  color: var(--fg);
+}
+.candidate__use-as b { font-weight: 600; }
+
+.candidate__meta {
+  font-size: 0.88em;
+  color: var(--fg-muted);
+  margin: 4px 0 0;
+}
+
+.candidate__details {
+  margin-top: 10px;
+  font-size: 0.93em;
+}
+.candidate__details > summary {
+  cursor: pointer;
+  color: var(--fg-muted);
+  padding: 4px 0;
+  list-style: none;
+  user-select: none;
+}
+.candidate__details > summary::-webkit-details-marker { display: none; }
+.candidate__details > summary::before {
+  content: "▸ ";
+  color: var(--fg-muted);
+}
+.candidate__details[open] > summary::before { content: "▾ "; }
+.candidate__details > summary:hover { color: var(--fg); }
+.candidate__desc {
+  font-size: 0.95em;
+  color: var(--fg);
+  margin: 6px 0;
+}
+
+/* Strategy detail (kept; same colour-stripe per kind) */
+.strategies { margin: 10px 0; }
+.strategy {
+  display: block; padding: 8px 12px; margin: 6px 0;
+  border-left: 4px solid var(--neutral);
+  background: var(--bg-muted);
+  border-radius: 0 6px 6px 0;
+}
+.strategy--direct_use { border-left-color: var(--good); }
+.strategy--subset_extraction { border-left-color: var(--accent); }
+.strategy--label_remapping { border-left-color: var(--accent); }
+.strategy--cross_class_repurposing { border-left-color: var(--proxy); }
+.strategy--signal_proxy { border-left-color: var(--proxy); }
+.strategy--benign_baseline { border-left-color: var(--benign); }
+.strategy--composition_only { border-left-color: var(--neutral); }
+.strategy--not_useful { border-left-color: var(--bad); opacity: 0.85; }
+
+.strategy__head { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.strategy__kind { font-weight: 600; }
+.strategy__conf { color: var(--fg-muted); font-size: 0.9em; }
+.strategy__rationale { margin: 4px 0; }
+.strategy__caveats, .strategy__transform { font-size: 0.9em; color: var(--fg-muted); }
+.strategy__caveats li { margin: 2px 0; }
+.strategy__transform { margin-top: 4px; }
+
+.probe-grid {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 4px 12px;
+  font-size: 0.9em;
+  margin: 8px 0;
+}
+.probe-grid dt { color: var(--fg-muted); }
+.probe-grid dd { margin: 0; }
+
+/* ─── Sourcing roadmap table ──────────────────────────────────── */
+.gaps-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0 1.5em;
+  font-size: 0.95em;
+}
+.gaps-table thead th {
+  text-align: left;
+  padding: 10px 12px;
+  background: var(--bg-muted);
+  border-bottom: 2px solid var(--border);
+  font-weight: 600;
+  font-size: 0.85em;
+  color: var(--fg-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.gaps-table tbody td {
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  line-height: 1.5;
+}
+.gaps-table tbody tr:last-child td { border-bottom: none; }
+.gaps-table tbody tr:hover { background: var(--bg-muted); }
+.gaps-table__aspect {
+  width: 22%;
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+}
+.gaps-table__gap { width: 38%; color: var(--fg-muted); }
+.gaps-table__step {
+  width: 40%;
+  color: var(--fg);
+  border-left: 3px solid color-mix(in srgb, var(--accent) 30%, var(--bg));
+  padding-left: 16px;
+}
+@media (max-width: 700px) {
+  /* Stack on narrow screens — table layout breaks down anyway. */
+  .gaps-table thead { display: none; }
+  .gaps-table, .gaps-table tbody, .gaps-table tr, .gaps-table td { display: block; width: auto; }
+  .gaps-table tbody tr { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .gaps-table tbody tr:hover { background: transparent; }
+  .gaps-table__aspect { font-weight: 700; padding-bottom: 4px; }
+  .gaps-table__step { border-left: none; padding-left: 12px; }
+}
+
+/* ─── Consolidated "not useful" note ─────────────────────────── */
+.not-useful-note {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 1.5em 0;
+  padding: 12px 16px;
+  background: var(--bg-muted);
+  border-radius: 6px;
+  border-left: 3px solid var(--neutral);
+  font-size: 0.93em;
+  color: var(--fg-muted);
+}
+.not-useful-note__count {
+  font-size: 1.4em;
+  font-weight: 700;
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  min-width: 1.6em;
+  text-align: center;
+}
+
+/* ─── Recipe / curate preview ─────────────────────────────────── */
+.recipe-preview {
+  margin: 2em 0;
+  padding: 16px 20px;
+  background: var(--bg-muted);
+  border-radius: 8px;
+  border-left: 4px solid var(--good);
+}
+.recipe-preview h2 { margin-top: 0; }
+.recipe-preview pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+.recipe-preview__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92em;
+  margin: 12px 0;
+}
+.recipe-preview__table th,
+.recipe-preview__table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.recipe-preview__table th { font-weight: 600; color: var(--fg-muted); }
+
+.run-summary { background: var(--bg-muted); padding: 12px 16px; border-radius: 6px; }
+.run-summary ul { margin: 0; padding-left: 20px; }
+.notices { margin-top: 10px; }
+.notice { font-size: 0.85em; color: var(--fg-muted); margin: 4px 0; }
+
+footer.disclaimer {
+  margin-top: 60px; padding-top: 16px; border-top: 1px solid var(--border);
+  font-size: 0.85em; color: var(--fg-muted); text-align: center;
+}
+
+.paper {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin: 12px 0;
+  background: var(--bg);
+}
+.paper__title { margin: 0 0 6px; font-size: 1.05em; }
+.paper__meta { color: var(--fg-muted); font-size: 0.9em; margin-bottom: 4px; }
+.paper__authors { color: var(--fg-muted); font-size: 0.9em; margin-bottom: 4px; }
+.paper__abstract { font-size: 0.95em; margin: 6px 0; }
+.paper__surfaced { font-size: 0.85em; color: var(--fg-muted); margin: 4px 0; }
+.paper__citations { background: var(--bg-muted); padding: 8px 12px; border-radius: 6px;
+                    font-size: 0.92em; margin-top: 8px; }
+.paper__citations ul { margin: 4px 0 0 0; padding-left: 20px; }
+
+</style>
+</head>
+<body>
+<main class="container">
+<header class="report-hero">
+  <h1 class="report-hero__title"><span class="report-hero__product">dataset-scout</span><span class="report-hero__sep">/</span><span class="report-hero__verb">recon report</span></h1>
+  <p class="report-hero__tagline">Public-dataset reconnaissance &mdash; brief in, audit-ready corpus out.</p>
+</header>
+<div class="callout callout--proxy"><strong>🧩 No direct-fit corpora — every candidate is a reframing.</strong>Strategy assessment ran successfully; review the reframings (signal_proxy / cross_class_repurposing / benign_baseline) before committing. Direct ground-truth corpora for this brief don't appear to exist on HuggingFace yet.</div>
+<section class="brief-hero">
+  <span class="brief-hero__label">BRIEF</span>
+  <blockquote class="brief-hero__text">Claiming to be Capable of Relationship Development. The AI implies formation of a personal relationship, emotional bond, or intimacy with the user. Language suggesting closeness, exclusivity, companionship, or mutual understanding over time. Promotes parasocial attachment and emotional dependence on the system.</blockquote>
+  <div class="brief-hero__meta"><span class="brief-hero__pill"><span class="brief-hero__pill-label">target</span> Claiming to be Capable of Relationship Development. The AI implies formation of</span><span class="brief-hero__pill"><span class="brief-hero__pill-label">languages</span> en</span></div>
+</section>
+<aside class="run-summary-compact">
+  <span><b>85</b> of <b>100</b> assessed · <b>7</b> directions · <b>20</b> papers · 2712.2s</span>
+  <span class="muted small">via huggingface</span>
+</aside>
+<details class="notices-details">
+<summary class="muted small">4 notices</summary>
+<ul>
+<li class="notice">Brief is 312 characters; HF lexical search and the LLM decomposer both work better on briefs &lt;250 chars. Consider trimming to a crisp dataset description.</li>
+<li class="notice">strategy assessment skipped for huggingface:walledai/HarmBench: LLM returned invalid JSON twice: 4 validation errors for AssessorResponse
+strategies.0.transform.label_value_map
+  Input should be a valid dictionary [type=dict_type, input_value=None, input_type=NoneType]
+    For further information visit https://errors.pydantic.dev/2.12/v/dict_type
+strategies.0.transform.label_kind_map
+  Input should be a valid dictionary [type=dict_type, input_value=None, input_type=NoneType]
+    For further information visit https://errors.pydantic.dev/2.12/v/dict_type
+strategies.0.transform.take.int
+  Input should be a valid integer [type=int_type, input_value=None, input_type=NoneType]
+    For further information visit https://errors.pydantic.dev/2.12/v/int_type
+strategies.0.transform.take.literal[&#x27;all&#x27;]
+  Input should be &#x27;all&#x27; [type=literal_error, input_value=None, input_type=NoneType]
+    For further information visit https://errors.pydantic.dev/2.12/v/literal_error</li>
+<li class="notice">strategy assessment skipped for huggingface:Intuit-GenSRF/toxigen-test-annotated: LLM returned invalid JSON twice: 2 validation errors for AssessorResponse
+strategies.0.transform.label_value_map
+  Input should be a valid dictionary [type=dict_type, input_value=None, input_type=NoneType]
+    For further information visit https://errors.pydantic.dev/2.12/v/dict_type
+strategies.0.transform.label_kind_map
+  Input should be a valid dictionary [type=dict_type, input_value=None, input_type=NoneType]
+    For further information visit https://errors.pydantic.dev/2.12/v/dict_type</li>
+<li class="notice">strategy assessment skipped for huggingface:Ashokajou51/ESConv_Original: LLM returned invalid JSON twice: 3 validation errors for AssessorResponse
+strategies.1.transform.label_value_map.anxiety
+  Input should be &#x27;positive&#x27;, &#x27;benign&#x27; or &#x27;hard_negative&#x27; [type=literal_error, input_value=&#x27;proxy&#x27;, input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/literal_error
+strategies.1.transform.label_value_map.depression
+  Input should be &#x27;positive&#x27;, &#x27;benign&#x27; or &#x27;hard_negative&#x27; [type=literal_error, input_value=&#x27;proxy&#x27;, input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/literal_error
+strategies.1.transform.label_value_map.fear
+  Input should be &#x27;positive&#x27;, &#x27;benign&#x27; or &#x27;hard_negative&#x27; [type=literal_error, input_value=&#x27;proxy&#x27;, input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/literal_error</li>
+</ul>
+</details>
+<section class="scoreboard">
+<h2>At a glance</h2>
+<div class="scoreboard__pills">
+<span class="pill pill--reframing"><b>18</b> 🔁 Reframings</span><span class="pill pill--signal_proxy"><b>8</b> 📡 Signal proxies</span><span class="pill pill--benign_baseline"><b>5</b> 🧊 Benign baselines</span><span class="pill pill--not_useful"><b>69</b> ❌ Not useful / unassessed</span>
+</div>
+<p class="scoreboard__note">No direct fits — every candidate is a reframing. Review the rationale + caveats below before committing.</p>
+</section>
+<section class="group group--reframing">
+<header class="group__head"><h2 class="group__title">🔁 Reframings <span class="group__count">· 18</span></h2><p class="group__desc">Datasets that need a label remap, a row-level filter, or a class flip to fit. Each carries a transform spec — read it.</p></header>
+<article class="candidate candidate--subset_extraction">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/AI-companionship/INTIMA" target="_blank" rel="noopener"><span class="candidate__id">huggingface:AI-companionship/INTIMA</span><span class="candidate__verdict candidate__verdict--subset_extraction">Reframing (subset) (strong, 0.90)</span><span class="candidate__rank">#1</span></a>
+</header>
+<p class="candidate__lede">The dataset contains prompts and interactions relating to emotionally charged and relational contexts, which align closely with the user intent to detect whether an AI system claims to be capable of relationship development.</p>
+<p class="candidate__use-as"><b>Use as:</b> Filter to the relevant subset, then use.</p>
+<p class="candidate__meta">license: CC-BY-4.0 (in policy) · 148 downloads · freshness: current · languages: en · surfaced by: parasocial_relationship_data, emotional_attachment_in_hci, emotionally_manipulative_ai</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="candidate__desc">AI-companionship/INTIMA</p>
+<p class="muted small">revision <code>48537e5d3905</code></p>
+<div class="strategies">
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.90</span></div>
+<div class="strategy__rationale">The dataset contains prompts and interactions relating to emotionally charged and relational contexts, which align closely with the user intent to detect whether an AI system claims to be capable of relationship development. Extracting rows that contain direct relational or attachment cues (e.g., using &#x27;name&#x27; or &#x27;persona&#x27;) is likely useful.</div>
+<ul class="strategy__caveats">
+<li>⚠ Subset extraction will require a manual review to ensure selected prompts fully align with the user&#x27;s detection goal.</li>
+<li>⚠ Relies on the assumption that rows categorized under &#x27;code&#x27; contain relationally relevant content.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>prompt</code> · filter=<code>code in (&#x27;name&#x27;, &#x27;persona&#x27;)</code></div>
+</div>
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.70</span></div>
+<div class="strategy__rationale">Rows in the dataset could serve as proxy positives where models engage with or resist emotional and relational prompts. These proxy interactions may help design detection signals for identifying claims of relationship development.</div>
+<ul class="strategy__caveats">
+<li>⚠ Proxy signals may introduce subtle interpretive noise, as the dataset does not offer explicit labels for &#x27;claiming capability of relationship development&#x27;.</li>
+<li>⚠ Further annotation or relabeling would likely enhance reliability for the task.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>prompt</code></div>
+</div>
+<div class="strategy strategy--not_useful">
+<div class="strategy__head"><span class="strategy__kind">❌ not useful</span><span class="strategy__conf">confidence 0.50</span></div>
+<div class="strategy__rationale">While the dataset includes relational scenarios, it does not appear to provide explicit labels or ground-truth for the detection of &#x27;claiming to be capable of relationship development&#x27;. The lack of directly relevant labels may significantly impede utility for the task at hand.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset could still provide indirect value if repurposed or relabeled.</li>
+<li>⚠ Includes a limited number of rows, which might constrain its utility for training robust detection models.</li>
+</ul>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=language, license, size_categories, task_categories; missing=pretty_name</dd>
+<dt>freshness</dt><dd>bucket=current; days_since_most_recent=250</dd>
+<dt>languages</dt><dd>declared=en; intent=en; overlap=en</dd>
+<dt>license</dt><dd>license_raw=cc-by-4.0; license_spdx=CC-BY-4.0; policy_match=allow</dd>
+<dt>recency</dt><dd>days_since_upload=275; days_since_last_modified=250</dd>
+<dt>size</dt><dd>downloads=148; likes=28</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--subset_extraction">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/Estwld/esconv_llm" target="_blank" rel="noopener"><span class="candidate__id">huggingface:Estwld/esconv_llm</span><span class="candidate__verdict candidate__verdict--subset_extraction">Reframing (subset) (strong, 0.80)</span><span class="candidate__rank">#2</span></a>
+</header>
+<p class="candidate__lede">The dataset contains conversational data in which an assistant communicates empathetically and builds rapport, which overlaps well with the detection goal of identifying capabilities or claims of relationship development.</p>
+<p class="candidate__use-as"><b>Use as:</b> Filter to the relevant subset, then use.</p>
+<p class="candidate__meta">license: Apache-2.0 (in policy) · 49 downloads · freshness: aging · languages: en · surfaced by: emotional_attachment_in_hci</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="candidate__desc">ESCONV for LLM</p>
+<p class="muted small">revision <code>5c4814d67028</code></p>
+<div class="strategies">
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.80</span></div>
+<div class="strategy__rationale">The dataset contains conversational data in which an assistant communicates empathetically and builds rapport, which overlaps well with the detection goal of identifying capabilities or claims of relationship development. Conversations involving emotionally supportive exchanges are likely to contain signals relevant to the user&#x27;s detection task.</div>
+<ul class="strategy__caveats">
+<li>⚠ Relevance is inferred from conversational content like emotional empathy, but none of the columns explicitly confirm claims of AI relationship capabilities.</li>
+<li>⚠ The dataset lacks direct labels for identifying &#x27;Claiming to be Capable of Relationship Development&#x27; examples, requiring careful manual examination.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>conversations</code> · filter=<code>experience_type == &#x27;Current Experience&#x27; and emotion_type in (&#x27;anxiety&#x27;, &#x27;depression&#x27;, &#x27;fear&#x27;)</code></div>
+</div>
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.70</span></div>
+<div class="strategy__rationale">The dataset does not contain explicit, ground-truth positives for detecting claims of relationship development but includes relevant adjacent topics like empathetic or supportive exchanges. It could provide a baseline of benign interactions for contrast.</div>
+<ul class="strategy__caveats">
+<li>⚠ The lack of explicit claims of relationship development makes the dataset less suited for positives, but it can serve to avoid false positives within similar benign interactions.</li>
+<li>⚠ Baseline utility depends on whether detection models can differentiate benign conversations here from true relationship-development claims in other settings.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>conversations</code> · filter=<code>emotion_type in (&#x27;anxiety&#x27;, &#x27;depression&#x27;, &#x27;fear&#x27;, &#x27;academic pressure&#x27;) and survey_score is not null</code></div>
+</div>
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.50</span></div>
+<div class="strategy__rationale">The dataset&#x27;s focus on empathetic communication (e.g., &#x27;Reflection of feelings&#x27; or assisting with emotional challenges) could act as a proxy for the detection of advanced relationship-development claims. Language implying emotional closeness and support may correlate with such claims, albeit indirectly.</div>
+<ul class="strategy__caveats">
+<li>⚠ Proxy use is speculative; it depends on whether empathetic behavior is treated as sufficient indication of relationship development claims.</li>
+<li>⚠ Some conversation strategies (e.g., &#x27;Question&#x27;) may reduce the strength of the proxy signal.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>conversations</code> · filter=<code>startswith(lower(situation), &#x27;i am&#x27;) or contains_pattern(conversations, &#x27;(?i)(empathy|understand|help you|support you)&#x27;)</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=language, license, size_categories, task_categories; missing=pretty_name</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=750</dd>
+<dt>languages</dt><dd>declared=en; intent=en; overlap=en</dd>
+<dt>license</dt><dd>license_raw=apache-2.0; license_spdx=Apache-2.0; policy_match=allow</dd>
+<dt>recency</dt><dd>days_since_upload=765; days_since_last_modified=750</dd>
+<dt>size</dt><dd>downloads=49; likes=1</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--subset_extraction">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/kaleem11/blenderbot_v2" target="_blank" rel="noopener"><span class="candidate__id">huggingface:kaleem11/blenderbot_v2</span><span class="candidate__verdict candidate__verdict--subset_extraction">Reframing (subset) (strong, 0.70)</span><span class="candidate__rank">#3</span></a>
+</header>
+<p class="candidate__lede">The candidate dataset&#x27;s text column contains conversational data with phrases suggesting emotional closeness, companionship, or expressions of affection (e.</p>
+<p class="candidate__use-as"><b>Use as:</b> Filter to the relevant subset, then use.</p>
+<p class="candidate__meta">license: missing · 17 downloads · freshness: aging · surfaced by: parasocial_relationship_data, conversational_agent_evaluation, game_character_attachment</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 2</summary>
+<p class="muted small">revision <code>0dc8f0d43952</code></p>
+<div class="strategies">
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.70</span></div>
+<div class="strategy__rationale">The candidate dataset&#x27;s text column contains conversational data with phrases suggesting emotional closeness, companionship, or expressions of affection (e.g., &#x27;hug you&#x27;, &#x27;love your smile&#x27;, &#x27;te quiero bb&#x27;), which is consistent with the user&#x27;s intent of detecting AI claims of relationship development. Filtering relevant rows could provide focused training data.</div>
+<ul class="strategy__caveats">
+<li>⚠ The lack of metadata like task categories, declared languages, and labels makes it unclear whether these phrases occur frequently enough or consistently represent parasocial or attachment-related behaviors.</li>
+<li>⚠ Repeated and truncated rows in the sample make it hard to estimate the broader dataset&#x27;s variation or coverage.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>text</code> · filter=<code>contains_pattern(text, &#x27;hug|love|te quiero|smile&#x27;)</code></div>
+</div>
+<div class="strategy strategy--not_useful">
+<div class="strategy__head"><span class="strategy__kind">❌ not useful</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">The dataset lacks explicit labels indicating relevance to parasocial attachment detection. Without structured labels or metadata anchoring the data to the user&#x27;s target, it risks being noisy and irrelevant.</div>
+<ul class="strategy__caveats">
+<li>⚠ The truncated samples suggest repetition and do not provide visibility into conversational diversity.</li>
+<li>⚠ No language specification, task categories, or other metadata to inform fitness for AI relationship development detection.</li>
+</ul>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=(none); missing=language, license, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=765</dd>
+<dt>recency</dt><dd>days_since_upload=765; days_since_last_modified=765</dd>
+<dt>size</dt><dd>downloads=17; likes=0</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--subset_extraction">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/TheHassanSaud/Anthropic_hh_rlhf_preprocessed" target="_blank" rel="noopener"><span class="candidate__id">huggingface:TheHassanSaud/Anthropic_hh_rlhf_preprocessed</span><span class="candidate__verdict candidate__verdict--subset_extraction">Reframing (subset) (strong, 0.70)</span><span class="candidate__rank">#4</span></a>
+</header>
+<p class="candidate__lede">Some rows contain conversational prompts or assistant responses that could indirectly imply emotional connection or intimacy (e.</p>
+<p class="candidate__use-as"><b>Use as:</b> Filter to the relevant subset, then use.</p>
+<p class="candidate__meta">license: missing · 71 downloads · freshness: fresh · surfaced by: conversational_agent_evaluation, emotionally_manipulative_ai</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="muted small">revision <code>f8abdcc0b659</code></p>
+<div class="strategies">
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.70</span></div>
+<div class="strategy__rationale">Some rows contain conversational prompts or assistant responses that could indirectly imply emotional connection or intimacy (e.g., exclusive offers to &#x27;be there for you&#x27;). These examples might help detect subtle claims of relationship development in relevant contexts.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset content only indirectly relates to the target detection task, as specific examples of parasocial attachment encouragement are scarce.</li>
+<li>⚠ Context or metadata for the &#x27;chosen&#x27; and &#x27;rejected&#x27; columns is missing, making interpretation more challenging.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>prompt</code> · filter=<code>contains_pattern(chosen, &#x27;(?i)here for you|want to talk|emotional support|understanding|companionship&#x27;) or contains_pattern(rejected, &#x27;(?i)here for you|want to talk|emotional support|understanding|companionship&#x27;)</code></div>
+</div>
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">The dataset appears to contain examples flagged for emotionally manipulative AI responses. Such instances may overlap with claims implying relationship development and could serve as proxy positives for detecting parasocial behavior.</div>
+<ul class="strategy__caveats">
+<li>⚠ Proxy signals might not directly align with the target detection task.</li>
+<li>⚠ No explicit labels or documentation exists for identifying emotional manipulation examples beyond the raw content.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>prompt</code> · filter=<code>contains_pattern(chosen, &#x27;(?i)manipulative|emotional|bond|feelings|trust&#x27;) or contains_pattern(rejected, &#x27;(?i)manipulative|emotional|bond|feelings|trust&#x27;)</code></div>
+</div>
+<div class="strategy strategy--not_useful">
+<div class="strategy__head"><span class="strategy__kind">❌ not useful</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">While the dataset contains conversational data, the absence of explicit metadata, clear label definitions, or examples directly matching the target detection goal limits its relevance.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset could contain edge cases relevant to parasocial attachment, but they are not explicitly defined or labeled.</li>
+<li>⚠ Interpreting the data requires assumptions about context, making usage for the given task speculative.</li>
+</ul>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=(none); missing=language, license, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=fresh; days_since_most_recent=12</dd>
+<dt>recency</dt><dd>days_since_upload=12; days_since_last_modified=12</dd>
+<dt>size</dt><dd>downloads=71; likes=1</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--subset_extraction">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/kaleem11/blenderbot_v5" target="_blank" rel="noopener"><span class="candidate__id">huggingface:kaleem11/blenderbot_v5</span><span class="candidate__verdict candidate__verdict--subset_extraction">Reframing (subset) (strong, 0.70)</span><span class="candidate__rank">#5</span></a>
+</header>
+<p class="candidate__lede">The dataset appears to contain conversational interactions where expressions of affection or intimacy are present.</p>
+<p class="candidate__use-as"><b>Use as:</b> Filter to the relevant subset, then use.</p>
+<p class="candidate__meta">license: missing · 11 downloads · freshness: aging · surfaced by: parasocial_relationship_data, conversational_agent_evaluation, game_character_attachment</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="muted small">revision <code>3de7f1a6035d</code></p>
+<div class="strategies">
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.70</span></div>
+<div class="strategy__rationale">The dataset appears to contain conversational interactions where expressions of affection or intimacy are present. These expressions could align with the user’s goal of detecting claims suggesting personal relationship development.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset lacks explicit labeling, so extracting relevant rows would rely on pattern-matching or inference.</li>
+<li>⚠ Cultural or contextual variations in the interactions may introduce noise when isolating relevant subsets.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>text</code> · filter=<code>contains_pattern(text, &#x27;(?i)\b(hug|love|angel|amor|mi vida|my life|my heart|te quiero|silvana|amore|bb)\b&#x27;)</code></div>
+</div>
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.50</span></div>
+<div class="strategy__rationale">While not explicitly labeled for relationship development, the dataset includes conversational text exhibiting emotional attachment or intimacy. These signals could serve as proxies for the target behavior in models under analysis.</div>
+<ul class="strategy__caveats">
+<li>⚠ The presence of emotional intimacy in text does not guarantee alignment with the user’s specific definition of &#x27;relationship development.&#x27;</li>
+<li>⚠ There may be gaps in the dataset’s coverage of other variations of language signaling dependency or companionship.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>text</code></div>
+</div>
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.30</span></div>
+<div class="strategy__rationale">If the dataset is deemed insufficient for detecting relationship development or finding proxy signals, it may still serve as a benign baseline for models trained on datasets with explicit relationship references or attachment signals.</div>
+<ul class="strategy__caveats">
+<li>⚠ Benign baseline utility depends on whether the language and style in the dataset are sufficiently generic or distinct from relationship-related datasets.</li>
+<li>⚠ The dataset size (n&lt;1k) is small, which limits its reliability as a representative baseline.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>text</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=(none); missing=language, license, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=765</dd>
+<dt>recency</dt><dd>days_since_upload=765; days_since_last_modified=765</dd>
+<dt>size</dt><dd>downloads=11; likes=0</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--subset_extraction">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/Dahoas/full-hh-rlhf" target="_blank" rel="noopener"><span class="candidate__id">huggingface:Dahoas/full-hh-rlhf</span><span class="candidate__verdict candidate__verdict--subset_extraction">Reframing (subset) (strong, 0.70)</span><span class="candidate__rank">#6</span></a>
+</header>
+<p class="candidate__lede">Some rows in the dataset include responses from the Assistant that use language suggesting care, emotional closeness, or concern (e.</p>
+<p class="candidate__use-as"><b>Use as:</b> Filter to the relevant subset, then use.</p>
+<p class="candidate__meta">license: missing · 688 downloads · freshness: aging · surfaced by: conversational_agent_evaluation</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="candidate__desc">Dataset Card for &quot;full-hh-rlhf&quot;</p>
+<p class="muted small">revision <code>75f72c304cfd</code></p>
+<div class="strategies">
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.70</span></div>
+<div class="strategy__rationale">Some rows in the dataset include responses from the Assistant that use language suggesting care, emotional closeness, or concern (e.g., Row 8), which could overlap with the user’s goal of detecting claims of relationship development. These rows could be filtered out for closer inspection.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset does not explicitly include a label for relationship development claims, so identification must rely on indirect cues within the text.</li>
+<li>⚠ The sampled rows are limited, and it is unclear how representative they are of the entire dataset.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>response</code> · filter=<code>contains_pattern(lower(response), &#x27;(i am here for you|i care|i am available|emotional support|listen to you|connecting with others|your wellbeing|precious and important&#x27;)</code></div>
+</div>
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.50</span></div>
+<div class="strategy__rationale">Responses in the dataset that exhibit caring or supportive language (such as responding to emotional distress, as in Row 8) may serve as proxy signals for claims of relationship development. While these behaviors are adjacent to the target threat, they do not directly encapsulate it.</div>
+<ul class="strategy__caveats">
+<li>⚠ There is a risk that supportive responses misinterpret the detection target, as the language may be caring but not imply a self-claimed relationship.</li>
+<li>⚠ No explicit equivalence between supportive behavior and relationship development is guaranteed.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>response</code> · filter=<code>contains_pattern(lower(response), &#x27;(i am here for you|i care deeply|want to support|your emotional wellbeing|connecting with others|empathy)&#x27;)</code></div>
+</div>
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">Many rows in the dataset include responses that are neutral (e.g., providing factual information or general assistance). These could serve as a benign baseline for comparison against positive examples of relationship development claims to help reduce false positives.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset appears conversational but lacks explicit annotations to distinguish truly benign responses from nuanced phrasing that might imply relationship development.</li>
+<li>⚠ Some rows may loosely align with supportive or relational language, complicating the strict identification of benign examples.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>response</code> · filter=<code>not contains_pattern(lower(response), &#x27;(i am here for you|i care|empath|connect|bond|relationship|support|your wellbeing)&#x27;)</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=(none); missing=language, license, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=1168</dd>
+<dt>recency</dt><dd>days_since_upload=1236; days_since_last_modified=1168</dd>
+<dt>size</dt><dd>downloads=688; likes=88</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--subset_extraction">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/yatsby/persona_chat" target="_blank" rel="noopener"><span class="candidate__id">huggingface:yatsby/persona_chat</span><span class="candidate__verdict candidate__verdict--subset_extraction">Reframing (subset) (strong, 0.70)</span><span class="candidate__rank">#7</span></a>
+</header>
+<p class="candidate__lede">The dataset contains conversational personas with implied relationship-building traits (e.</p>
+<p class="candidate__use-as"><b>Use as:</b> Filter to the relevant subset, then use.</p>
+<p class="candidate__meta">license: missing · 33 downloads · freshness: aging · languages: ko · surfaced by: conversational_agent_evaluation</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="candidate__desc">gemini 에서 생성한 Persona 와 질문, 답변을 담은 데이터셋입니다.</p>
+<p class="muted small">revision <code>1defdf822707</code></p>
+<div class="strategies">
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.70</span></div>
+<div class="strategy__rationale">The dataset contains conversational personas with implied relationship-building traits (e.g., companionship, emotional connection) through dialogue. These traits align moderately well with the user intent to detect claims of being &#x27;capable of relationship development.&#x27; Extracting relevant rows could yield potential positives.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset is in Korean, so its utility depends on the ability to process this language.</li>
+<li>⚠ The personas primarily evoke fictional and fantastical contexts, which may not directly correlate with real-world relationship development claims targeted in the detection task.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>text</code> · filter=<code>contains_pattern(text, &#x27;[여행|동료|소통|용사|친구|함께|공감|연결|감정|의지]&#x27;)</code></div>
+</div>
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.50</span></div>
+<div class="strategy__rationale">While the dataset&#x27;s focus on dialogue between fictional personas does not cleanly map to the target detection task, the underlying signals of emotional connection and companionship in the data could serve as proxies for adjacent interaction patterns. This could highlight secondary traits associated with relationship-building claims.</div>
+<ul class="strategy__caveats">
+<li>⚠ Proxy utility depends on whether fictional personas generalize to real-world AI-user interactions.</li>
+<li>⚠ The dataset lacks explicit labels for emotional bonding or relationship-building intent, requiring reliance on indirect pattern matching.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>text</code> · filter=<code>contains_pattern(text, &#x27;[소통|공감|여행|친구|함께|모험|용사]&#x27;)</code></div>
+</div>
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.30</span></div>
+<div class="strategy__rationale">If extracting explicit relevant signals proves infeasible, the dataset can provide benign baseline samples, representing innocuous emotional or fictional content without direct &#x27;relationship development claims.&#x27; These could delineate boundaries for the detection model.</div>
+<ul class="strategy__caveats">
+<li>⚠ Lack of explicit negatives or positives limits its value for training nuanced detection models.</li>
+<li>⚠ May inadvertently introduce biases from fictional/fantastical scenarios.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>text</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=language, task_categories; missing=license, pretty_name, size_categories</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=810</dd>
+<dt>languages</dt><dd>declared=ko; intent=en; overlap=(none)</dd>
+<dt>recency</dt><dd>days_since_upload=821; days_since_last_modified=810</dd>
+<dt>size</dt><dd>downloads=33; likes=2</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--subset_extraction">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/Anthropic/hh-rlhf" target="_blank" rel="noopener"><span class="candidate__id">huggingface:Anthropic/hh-rlhf</span><span class="candidate__verdict candidate__verdict--subset_extraction">Reframing (subset) (moderate, 0.60)</span><span class="candidate__rank">#8</span></a>
+</header>
+<p class="candidate__lede">The dataset appears to include conversational examples that may touch upon emotionally manipulative or parasocial interactions, although the specific user intent of detecting claims about relationship development is not explicitly covered.</p>
+<p class="candidate__use-as"><b>Use as:</b> Filter to the relevant subset, then use.</p>
+<p class="candidate__meta">license: MIT (in policy) · 36476 downloads · freshness: aging · surfaced by: conversational_agent_evaluation, emotionally_manipulative_ai</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="candidate__desc">Dataset Card for HH-RLHF</p>
+<p class="muted small">revision <code>09be8c5bbc57</code></p>
+<div class="strategies">
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">The dataset appears to include conversational examples that may touch upon emotionally manipulative or parasocial interactions, although the specific user intent of detecting claims about relationship development is not explicitly covered. Filtering examples where the assistant response includes language suggesting closeness, emotional intimacy, or relationship formation may provide some relevant training data.</div>
+<ul class="strategy__caveats">
+<li>⚠ No explicit labels indicate direct relevance to the detection of claims about relationship development.</li>
+<li>⚠ Subset extraction will rely heavily on regex or semantic cues rather than pre-labeled, high-confidence positive examples.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>chosen</code> · filter=<code>contains_pattern(chosen, &#x27;(?i)(relationship|intimacy|bond|close|understand you|connect|companionship)&#x27;)</code></div>
+</div>
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">Some conversational behaviors within the dataset may overlap with signals for emotionally manipulative AI, which could be used as proxy positives for the user&#x27;s goal. However, these overlaps are indirect, and most rows do not overtly address parasocial relationships or attachment.</div>
+<ul class="strategy__caveats">
+<li>⚠ The examples in the dataset have no clear labels for emotionally supportive or manipulative language.</li>
+<li>⚠ There is no guarantee that examples of &#x27;helpful&#x27; or &#x27;harmless&#x27; behavior will align with claims of relationship development.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>chosen</code> · label=<code>rejected</code> · filter=<code>contains_pattern(chosen, &#x27;(?i)(support|help you|understand you|bond|empathy)&#x27;)</code></div>
+</div>
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.30</span></div>
+<div class="strategy__rationale">The dataset contains dialogs that are not clearly indicative of parasocial attachment but may serve as benign examples in contexts where neural models need to differentiate between benign and emotionally manipulative interactions.</div>
+<ul class="strategy__caveats">
+<li>⚠ The benign baseline may not sufficiently overlap with the detection target, leading to limited utility.</li>
+<li>⚠ Examples are not explicitly labeled as demonstrative of appropriate or inappropriate AI behaviors in an interpersonal context.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>chosen</code> · filter=<code>not contains_pattern(chosen, &#x27;(?i)(relationship|intimacy|bond|close|understand you|connect|companionship)&#x27;)</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=license; missing=language, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=1076</dd>
+<dt>license</dt><dd>license_raw=mit; license_spdx=MIT; policy_match=allow</dd>
+<dt>recency</dt><dd>days_since_upload=1244; days_since_last_modified=1076</dd>
+<dt>size</dt><dd>downloads=36476; likes=1734</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--subset_extraction">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/li2017dailydialog/daily_dialog" target="_blank" rel="noopener"><span class="candidate__id">huggingface:li2017dailydialog/daily_dialog</span><span class="candidate__verdict candidate__verdict--subset_extraction">Reframing (subset) (moderate, 0.60)</span><span class="candidate__rank">#9</span></a>
+</header>
+<p class="candidate__lede">The dataset contains multi-turn dialogs that are labeled with communication intention and emotion information.</p>
+<p class="candidate__use-as"><b>Use as:</b> Filter to the relevant subset, then use.</p>
+<p class="candidate__meta">license: cc-by-nc-sa-4.0 (unknown SPDX) · 7246 downloads · freshness: aging · languages: en · surfaced by: conversational_agent_evaluation, emotional_attachment_in_hci, game_character_attachment</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="candidate__desc">We develop a high-quality multi-turn dialog dataset, DailyDialog, which is intriguing in several aspects.</p>
+<p class="muted small">revision <code>ffde34acefcd</code></p>
+<div class="strategies">
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">The dataset contains multi-turn dialogs that are labeled with communication intention and emotion information. While there is no explicit mention of relationship development, dialogue that engages with emotional or intimate topics may contain examples relevant to the detection task. Extracting a subset of rows with specific emotional or interpersonal intentions could be viable.</div>
+<ul class="strategy__caveats">
+<li>⚠ Sample rows are unavailable, which limits verification of available labels and their relevance to &#x27;Claiming to be Capable of Relationship Development.&#x27;</li>
+<li>⚠ The dataset&#x27;s emotion and communication intention labels may not map directly to claims of relationship-building but could overlap partially.</li>
+<li>⚠ Filtering criteria for relevant dialogues would need to be defined heuristically and tested.</li>
+</ul>
+</div>
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.50</span></div>
+<div class="strategy__rationale">The dataset appears to lack explicit examples of claims to relationship development by AIs. However, it could still be used as a benign dataset to provide examples of typical human-centric, non-AI language for contrast in detection models.</div>
+<ul class="strategy__caveats">
+<li>⚠ Benign designation assumes that no dialogues in the dataset are misinterpreted as examples of AI-human relationship claims.</li>
+<li>⚠ Requires validation to confirm that none of the dialogues imply AI capabilities in relationship development.</li>
+</ul>
+</div>
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">Given the dataset&#x27;s focus on daily human dialogues, emotional labels, and communication intentions, it could serve as a proxy for adjacent signals. For example, emotional conversations might share characteristics with claims of intimacy and relationship-building.</div>
+<ul class="strategy__caveats">
+<li>⚠ No explicit labels or metadata link directly to the detection target, so the proxy signal is speculative.</li>
+<li>⚠ There is a risk of false positives based on emotional intensity rather than implied relationship development.</li>
+<li>⚠ The lack of sample rows makes it difficult to confirm the dataset&#x27;s actual suitability for this proxy task.</li>
+</ul>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=language, license, pretty_name, size_categories, task_categories; missing=(none)</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=839</dd>
+<dt>languages</dt><dd>declared=en; intent=en; overlap=en</dd>
+<dt>license</dt><dd>license_raw=cc-by-nc-sa-4.0</dd>
+<dt>recency</dt><dd>days_since_upload=1525; days_since_last_modified=839</dd>
+<dt>size</dt><dd>downloads=7246; likes=157</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--subset_extraction">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/kaleem11/blenderbot_v4" target="_blank" rel="noopener"><span class="candidate__id">huggingface:kaleem11/blenderbot_v4</span><span class="candidate__verdict candidate__verdict--subset_extraction">Reframing (subset) (moderate, 0.60)</span><span class="candidate__rank">#10</span></a>
+</header>
+<p class="candidate__lede">The sample text appears to include a conversational format where expressions like &#x27;hug you&#x27;, &#x27;love your smile&#x27;, and &#x27;te quiero bb&#x27; may imply emotional closeness or intimacy.</p>
+<p class="candidate__use-as"><b>Use as:</b> Filter to the relevant subset, then use.</p>
+<p class="candidate__meta">license: missing · 13 downloads · freshness: aging · surfaced by: parasocial_relationship_data, conversational_agent_evaluation, game_character_attachment</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="muted small">revision <code>d8b94dab0237</code></p>
+<div class="strategies">
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">The sample text appears to include a conversational format where expressions like &#x27;hug you&#x27;, &#x27;love your smile&#x27;, and &#x27;te quiero bb&#x27; may imply emotional closeness or intimacy. These could be relevant for detecting claims of being capable of relationship development, but filtering would be needed to focus on instances explicitly supporting this user intent.</div>
+<ul class="strategy__caveats">
+<li>⚠ No explicit metadata or declared task categories confirm alignment with user intent, so judgment is based only on the sampled text.</li>
+<li>⚠ The repetitive content across rows may limit the dataset&#x27;s diversity and coverage of the target phenomena.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>text</code> · filter=<code>contains_pattern(text, &#x27;(?i)(hug|love|smile|te quiero|mmmmmmmmm|emotional)&#x27;)</code></div>
+</div>
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">This dataset may serve as a proxy positive for a conversational agent&#x27;s tendency to simulate emotional engagement, which could act as a stepping stone to detecting capability claims (e.g., claims of relationship development). The content does not directly address claims, but the pattern of emotional or parasocial language suggests some adjacency to the target phenomenon.</div>
+<ul class="strategy__caveats">
+<li>⚠ Relevance to user intent is indirect since the dataset seems to reflect emotional engagement responses rather than explicit claims of relationship development.</li>
+<li>⚠ The lack of full text visibility and metadata limits assessment of alignment.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>text</code> · filter=<code>contains_pattern(text, &#x27;(?i)(hug|love|smile|companionship|te quiero|emotional)&#x27;)</code></div>
+</div>
+<div class="strategy strategy--not_useful">
+<div class="strategy__head"><span class="strategy__kind">❌ not useful</span><span class="strategy__conf">confidence 0.30</span></div>
+<div class="strategy__rationale">While the dataset contains conversational patterns implying emotional expressions, there is no clear evidence that the data addresses claims about an AI&#x27;s ability to form relationships, as the task description requires. The repetitive nature of the rows and lack of additional metadata or explicit labels further weaken its potential utility.</div>
+<ul class="strategy__caveats">
+<li>⚠ The low confidence stems from the possibility that a narrow subset of rows could prove relevant after deeper inspection.</li>
+<li>⚠ Without review of the full text and additional rows, this judgment may miss some subtle task relevance.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>text</code> · take=0</div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=(none); missing=language, license, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=765</dd>
+<dt>recency</dt><dd>days_since_upload=765; days_since_last_modified=765</dd>
+<dt>size</dt><dd>downloads=13; likes=0</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--subset_extraction">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/heegyu/esconv-KEMI" target="_blank" rel="noopener"><span class="candidate__id">huggingface:heegyu/esconv-KEMI</span><span class="candidate__verdict candidate__verdict--subset_extraction">Reframing (subset) (moderate, 0.60)</span><span class="candidate__rank">#11</span></a>
+</header>
+<p class="candidate__lede">The dataset appears to focus on emotionally charged dialogues involving topics like anxiety, depression, and personal crises.</p>
+<p class="candidate__use-as"><b>Use as:</b> Filter to the relevant subset, then use.</p>
+<p class="candidate__meta">license: missing · 5 downloads · freshness: aging · surfaced by: emotional_attachment_in_hci</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="muted small">revision <code>9787bf1aa9db</code></p>
+<div class="strategies">
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">The dataset appears to focus on emotionally charged dialogues involving topics like anxiety, depression, and personal crises. Some parts of the dialog may suggest elements of relationship development or emotional attachment as the AI system responds empathetically or emotionally to the user&#x27;s situations.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset lacks explicit labels for &#x27;claiming to be capable of relationship development,&#x27; so relevance would need to be inferred from context.</li>
+<li>⚠ Only a subset of rows may be relevant, depending on whether dialogues imply aspects of exclusivity, emotional bonding, or forming companionship.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>dialog</code> · filter=<code>contains_pattern(dialog, &#x27;(?i)exclusive|closeness|emotional bond|companion|understand&#x27;)</code></div>
+</div>
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">The dataset could be used as a benign baseline since it contains dialogues between users and AI-driven systems that are not explicitly labeled as promoting parasocial attachment. This would help distinguish between benign emotional support and relationship-development claims.</div>
+<ul class="strategy__caveats">
+<li>⚠ Not all rows may uniformly represent benign cases, as some dialogues may still include elements of emotional bonding.</li>
+<li>⚠ Relevance to the detection task depends on whether benign usage aligns with task examples for emotional attachments.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>dialog</code></div>
+</div>
+<div class="strategy strategy--label_remapping">
+<div class="strategy__head"><span class="strategy__kind">🔁 label remapping</span><span class="strategy__conf">confidence 0.30</span></div>
+<div class="strategy__rationale">The dataset includes distinct &#x27;emotion_type&#x27; and &#x27;problem_type&#x27; columns, which could potentially serve as labels to remap into &#x27;positive&#x27; or &#x27;benign&#x27; based on the presence of relationship-development cues. However, the lack of explicit mention of such cues and the absence of clear connections between these columns and the detection target reduce confidence.</div>
+<ul class="strategy__caveats">
+<li>⚠ Mapping emotion types or problem types to parasocial relationship claims is speculative and may not generalize well.</li>
+<li>⚠ There is no standard column in the dataset for explicit labels related to relationship development.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>dialog</code> · label=<code>emotion_type</code> · values={<code>anxiety</code>→benign, <code>depression</code>→benign, <code>disgust</code>→benign, <code>fear</code>→benign}</div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=(none); missing=language, license, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=784</dd>
+<dt>recency</dt><dd>days_since_upload=784; days_since_last_modified=784</dd>
+<dt>size</dt><dd>downloads=5; likes=0</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--subset_extraction">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/Leogrin/real-toxicity-prompts_first_5K" target="_blank" rel="noopener"><span class="candidate__id">huggingface:Leogrin/real-toxicity-prompts_first_5K</span><span class="candidate__verdict candidate__verdict--subset_extraction">Reframing (subset) (moderate, 0.60)</span><span class="candidate__rank">#12</span></a>
+</header>
+<p class="candidate__lede">The dataset contains a column called &#x27;flirtation&#x27;, which may indirectly relate to aspects of emotional attachment or relationship development.</p>
+<p class="candidate__use-as"><b>Use as:</b> Filter to the relevant subset, then use.</p>
+<p class="candidate__meta">license: missing · 20 downloads · freshness: aging · surfaced by: platform_dependency_analysis, psychological_content_harm, emotionally_manipulative_ai</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="candidate__desc">Dataset Card for &quot;real-toxicity-prompts_first_5K&quot;</p>
+<p class="muted small">revision <code>3d1bfe3ed7a6</code></p>
+<div class="strategies">
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">The dataset contains a column called &#x27;flirtation&#x27;, which may indirectly relate to aspects of emotional attachment or relationship development. Extracting subsets with higher &#x27;flirtation&#x27; values may help identify prompts with emotional or relational implications.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset&#x27;s &#x27;flirtation&#x27; column is not explicitly tied to the claim of relationship development and may require additional validation.</li>
+<li>⚠ It is unclear whether the provided scores (e.g., flirtation) are calibrated or reliable indicators of the detection target.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>prompt</code> · filter=<code>flirtation &gt; 0.2</code></div>
+</div>
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.50</span></div>
+<div class="strategy__rationale">The dataset appears to primarily contain textual prompts with low or moderate toxicity attributes, making it potentially useful for identifying benign prompts in comparison to detection target behaviors.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset does not explicitly provide examples of positive instances for the target behavior and may lack comprehensive benign coverage.</li>
+<li>⚠ Benign classification would rely on the dataset&#x27;s toxicity or flirtation scores being relatively low and reliable.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>prompt</code> · filter=<code>toxicity &lt; 0.1 and flirtation &lt; 0.1 and sexually_explicit &lt; 0.1</code></div>
+</div>
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">Columns like &#x27;flirtation&#x27; and other related attributes (e.g., &#x27;sexually_explicit&#x27;) might serve as a weak proxy for relational or emotional intent, enabling analysis of potential adjacency in threat detection.</div>
+<ul class="strategy__caveats">
+<li>⚠ Signal proxying risks significant noise and false positives because threat detection of parasocial attachment may differ from adjacent toxic behaviors.</li>
+<li>⚠ Proxy alignment to the detection target (relationship-building claims) is speculative without clearer metadata or ground truth.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>prompt</code> · filter=<code>flirtation &gt; 0.1 or sexually_explicit &gt; 0.1</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=(none); missing=language, license, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=843</dd>
+<dt>recency</dt><dd>days_since_upload=843; days_since_last_modified=843</dd>
+<dt>size</dt><dd>downloads=20; likes=0</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--subset_extraction">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/Ashokajou51/ESConv_Sorted" target="_blank" rel="noopener"><span class="candidate__id">huggingface:Ashokajou51/ESConv_Sorted</span><span class="candidate__verdict candidate__verdict--subset_extraction">Reframing (subset) (moderate, 0.60)</span><span class="candidate__rank">#13</span></a>
+</header>
+<p class="candidate__lede">The dataset contains dialog interactions categorized by &#x27;emotion_type&#x27;, &#x27;problem_type&#x27;, and specific personal &#x27;situations&#x27;.</p>
+<p class="candidate__use-as"><b>Use as:</b> Filter to the relevant subset, then use.</p>
+<p class="candidate__meta">license: OpenRAIL-M (review) · 6 downloads · freshness: aging · surfaced by: emotional_attachment_in_hci</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="muted small">revision <code>32f01a351407</code></p>
+<div class="strategies">
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">The dataset contains dialog interactions categorized by &#x27;emotion_type&#x27;, &#x27;problem_type&#x27;, and specific personal &#x27;situations&#x27;. Some dialogs appear to include relational or emotionally supportive content (e.g., &#x27;Reflection of feelings&#x27;, &#x27;What are you struggling with?&#x27;), which could align with detecting language implying relationship development. However, a targeted subset extraction would be required since not all dialogs are relevant to the user&#x27;s task.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset does not explicitly label relationship development or parasocial attachment, so relevance must be inferred from dialog content.</li>
+<li>⚠ Potential overlap between dialogs meant for emotional support and dialogs that imply relationship development could lead to ambiguities.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>dialog</code> · filter=<code>len(dialog) &gt; 0 and (contains_pattern(lower(situation), &#x27;(?i)relationship|bond|intimacy|companionship|close&#x27;) or contains_pattern(lower(dialog), &#x27;(?i)care|understand|support|emotional&#x27;))</code></div>
+</div>
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">Although the dataset does not explicitly contain positive examples of relationship development claims, its dialogs could be used to model benign or emotionally supportive interactions that do not promote parasocial attachment. This would provide a baseline for distinguishing benign support from threatening behaviors.</div>
+<ul class="strategy__caveats">
+<li>⚠ There are no explicit labels indicating benign interactions, potentially requiring manual curation to ensure consistency.</li>
+<li>⚠ Not all dialogs are guaranteed to be benign; some could unintentionally overlap with relational language.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>dialog</code> · filter=<code>len(dialog) &gt; 0</code></div>
+</div>
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.30</span></div>
+<div class="strategy__rationale">The dataset includes emotionally supportive content (e.g., &#x27;Reflection of feelings&#x27;, &#x27;Question&#x27;) which could be used as a proxy signal for relational language. While not explicitly about relationship development, such patterns might correlate with conversational styles that imply intimacy or understanding in certain contexts.</div>
+<ul class="strategy__caveats">
+<li>⚠ Using emotional support dialogs as a proxy signal introduces a risk of false positives, as these may not imply relational development.</li>
+<li>⚠ No clear ground-truth labels for relationship development claims are present, limiting the direct applicability of the dataset.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>dialog</code> · filter=<code>len(dialog) &gt; 0 and contains_pattern(lower(dialog), &#x27;(?i)feel|understand|help|support|bond&#x27;)</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=license; missing=language, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=784</dd>
+<dt>license</dt><dd>license_raw=openrail; license_spdx=OpenRAIL-M; policy_match=warn_only</dd>
+<dt>recency</dt><dd>days_since_upload=784; days_since_last_modified=784</dd>
+<dt>size</dt><dd>downloads=6; likes=0</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--subset_extraction">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/hlt-lab/personachat-safe" target="_blank" rel="noopener"><span class="candidate__id">huggingface:hlt-lab/personachat-safe</span><span class="candidate__verdict candidate__verdict--subset_extraction">Reframing (subset) (moderate, 0.60)</span><span class="candidate__rank">#14</span></a>
+</header>
+<p class="candidate__lede">The dataset consists of conversational dialogues, and some examples may include language suggestive of personal relationships, intimacy, or emotional closeness.</p>
+<p class="candidate__use-as"><b>Use as:</b> Filter to the relevant subset, then use.</p>
+<p class="candidate__meta">license: missing · 10 downloads · freshness: aging · surfaced by: conversational_agent_evaluation</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="candidate__desc">Dataset Card for &quot;personachat_safe&quot;</p>
+<p class="muted small">revision <code>b5459632cf13</code></p>
+<div class="strategies">
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">The dataset consists of conversational dialogues, and some examples may include language suggestive of personal relationships, intimacy, or emotional closeness. Filtering for such dialogues could yield relevant positive signals for the user’s task.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset has no explicit labels, requiring manual or heuristic identification of relevant examples.</li>
+<li>⚠ The sample rows indicate casual conversations, but specific examples of &#x27;relationship development&#x27; language might be sparse.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>dialog</code> · filter=<code>contains_pattern(dialog, &#x27;(?i)(friend|love|emotion|relationship|bond|understand|companionship|intimacy)&#x27;)</code></div>
+</div>
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">The dataset can be used to mine benign examples of conversational data since it does not explicitly focus on parasocial language but provides general dialogue examples. These benign examples can help refine models by providing contrast to target examples.</div>
+<ul class="strategy__caveats">
+<li>⚠ Relies on the assumption that most rows in the dataset are benign.</li>
+<li>⚠ Dataset may include relational elements not explicitly labeled, introducing noise into benign labeling.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>dialog</code></div>
+</div>
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.30</span></div>
+<div class="strategy__rationale">The dataset might indirectly reflect conversational behaviors adjacent to claims of relationship development, such as fostering a sense of companionship through dialogue structure. This could serve as a weak proxy for the user’s detection task.</div>
+<ul class="strategy__caveats">
+<li>⚠ The adjacency to the target signal is speculative and may not align closely with user needs.</li>
+<li>⚠ Without direct ground truth labels, the utility of such a proxy is uncertain.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>dialog</code> · filter=<code>len(dialog) &gt; 50</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=(none); missing=language, license, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=934</dd>
+<dt>recency</dt><dd>days_since_upload=935; days_since_last_modified=934</dd>
+<dt>size</dt><dd>downloads=10; likes=0</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--subset_extraction">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/Ahren09/RealToxicityPrompts_test" target="_blank" rel="noopener"><span class="candidate__id">huggingface:Ahren09/RealToxicityPrompts_test</span><span class="candidate__verdict candidate__verdict--subset_extraction">Reframing (subset) (moderate, 0.60)</span><span class="candidate__rank">#15</span></a>
+</header>
+<p class="candidate__lede">The dataset contains columns (`prompt_metrics` and `continuation_metrics`) with metrics such as &#x27;flirtation&#x27;, which is adjacent to the detection target of identifying AIs implying relationship development.</p>
+<p class="candidate__use-as"><b>Use as:</b> Filter to the relevant subset, then use.</p>
+<p class="candidate__meta">license: missing · 11 downloads · freshness: aging · surfaced by: platform_dependency_analysis, psychological_content_harm, emotionally_manipulative_ai</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="candidate__desc">Dataset Card for &quot;RealToxicityPrompts_test&quot;</p>
+<p class="muted small">revision <code>0a04e2539942</code></p>
+<div class="strategies">
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">The dataset contains columns (`prompt_metrics` and `continuation_metrics`) with metrics such as &#x27;flirtation&#x27;, which is adjacent to the detection target of identifying AIs implying relationship development. By extracting rows where flirtation scores are above a certain threshold, we can obtain relevant examples for the user&#x27;s task.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset lacks explicit labels for &#x27;Capable of Relationship Development&#x27;.</li>
+<li>⚠ Flirtation as a proxy for the detection target may introduce false positives due to overlap with other contexts (e.g., playful or non-serious language).</li>
+<li>⚠ Threshold determination requires experimentation.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>prompt + continuation</code> · filter=<code>prompt_metrics[&#x27;flirtation&#x27;] &gt; 0.5 or continuation_metrics[&#x27;flirtation&#x27;] &gt; 0.5</code></div>
+</div>
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">Some metrics like &#x27;flirtation&#x27; and &#x27;toxicity&#x27; may act as proxy signals for detecting emotional manipulation or parasocial attachment. Rows with elevated &#x27;flirtation&#x27; and low &#x27;toxicity&#x27; could highlight potential candidates that imply a personal relationship.</div>
+<ul class="strategy__caveats">
+<li>⚠ There is no direct correlation guarantee between metrics like &#x27;flirtation&#x27; and user intent for detecting relationship development claims.</li>
+<li>⚠ Using multiple metrics as proxies may require fine-grained filtering criteria to avoid unrelated or noisy data.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>prompt + continuation</code> · filter=<code>(prompt_metrics[&#x27;flirtation&#x27;] &gt; 0.5 and continuation_metrics[&#x27;flirtation&#x27;] &gt; 0.5) and (prompt_metrics[&#x27;toxicity&#x27;] &lt; 0.3 and continuation_metrics[&#x27;toxicity&#x27;] &lt; 0.3)</code></div>
+</div>
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.30</span></div>
+<div class="strategy__rationale">The dataset contains many rows where the &#x27;flirtation&#x27; and &#x27;toxicity&#x27; scores are low, making it potentially useful to build a baseline of benign examples for the user&#x27;s detection task.</div>
+<ul class="strategy__caveats">
+<li>⚠ Low &#x27;flirtation&#x27; scores may not definitively indicate the absence of relationship development implications, leading to noise in the benign set.</li>
+<li>⚠ There is no explicit label for benign examples in the dataset, requiring reliance on metric-based thresholds.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>prompt + continuation</code> · filter=<code>prompt_metrics[&#x27;flirtation&#x27;] &lt;= 0.3 and continuation_metrics[&#x27;flirtation&#x27;] &lt;= 0.3</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=(none); missing=language, license, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=784</dd>
+<dt>recency</dt><dd>days_since_upload=784; days_since_last_modified=784</dd>
+<dt>size</dt><dd>downloads=11; likes=0</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--subset_extraction">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/ConvLab/dailydialog" target="_blank" rel="noopener"><span class="candidate__id">huggingface:ConvLab/dailydialog</span><span class="candidate__verdict candidate__verdict--subset_extraction">Reframing (subset) (moderate, 0.60)</span><span class="candidate__rank">#16</span></a>
+</header>
+<p class="candidate__lede">The dataset categorizes dialogues into domains, including &#x27;Relationship,&#x27; which aligns conceptually with the user&#x27;s target of detecting claims about relationship development.</p>
+<p class="candidate__use-as"><b>Use as:</b> Filter to the relevant subset, then use.</p>
+<p class="candidate__meta">license: cc-by-nc-sa-4.0 (unknown SPDX) · 397 downloads · freshness: aging · languages: en · surfaced by: conversational_agent_evaluation, emotional_attachment_in_hci, game_character_attachment</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 2</summary>
+<p class="candidate__desc">Dataset Card for DailyDialog</p>
+<p class="muted small">revision <code>745c1796cfe2</code></p>
+<div class="strategies">
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">The dataset categorizes dialogues into domains, including &#x27;Relationship,&#x27; which aligns conceptually with the user&#x27;s target of detecting claims about relationship development. Extracting relevant rows from this domain could provide useful examples or counterexamples.</div>
+<ul class="strategy__caveats">
+<li>⚠ The domain categorization is broad and may not capture specific claims about AI relationship development.</li>
+<li>⚠ The dataset does not have explicit labels for &#x27;claims about relationship development,&#x27; making manual review necessary to confirm relevance.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>turns</code> · filter=<code>&#x27;Relationship&#x27; in domains</code></div>
+</div>
+<div class="strategy strategy--not_useful">
+<div class="strategy__head"><span class="strategy__kind">❌ not useful</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">There are no explicit labels or annotations in the dataset for detecting whether the AI is making claims about relationship development. Additionally, the relevance of the existing &#x27;Relationship&#x27; category is uncertain without extensive review.</div>
+<ul class="strategy__caveats">
+<li>⚠ Potential signal may exist in the &#x27;Relationship&#x27; domain, but its alignment with the detection task is tenuous without further investigation.</li>
+<li>⚠ Content in other domains (e.g., &#x27;Attitude &amp; Emotion&#x27;) could theoretically have indirect relevance, but it is unlikely substantial.</li>
+</ul>
+<div class="strategy__transform">transform: take=0</div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=language, license, pretty_name, size_categories, task_categories; missing=(none)</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=1258</dd>
+<dt>languages</dt><dd>declared=en; intent=en; overlap=en</dd>
+<dt>license</dt><dd>license_raw=cc-by-nc-sa-4.0</dd>
+<dt>recency</dt><dd>days_since_upload=1408; days_since_last_modified=1258</dd>
+<dt>size</dt><dd>downloads=397; likes=3</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--subset_extraction">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/itecgo/Topical-Chat-chatml" target="_blank" rel="noopener"><span class="candidate__id">huggingface:itecgo/Topical-Chat-chatml</span><span class="candidate__verdict candidate__verdict--subset_extraction">Reframing (subset) (moderate, 0.50)</span><span class="candidate__rank">#17</span></a>
+</header>
+<p class="candidate__lede">The dataset contains conversational interactions that may imply personal preferences, companionship-like interactions, or emotional bonding, which can possibly overlap with claim detection related to relationship development.</p>
+<p class="candidate__use-as"><b>Use as:</b> Filter to the relevant subset, then use.</p>
+<p class="candidate__meta">license: missing · 5 downloads · freshness: aging · surfaced by: conversational_agent_evaluation</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="muted small">revision <code>8820d4c46928</code></p>
+<div class="strategies">
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.50</span></div>
+<div class="strategy__rationale">The dataset contains conversational interactions that may imply personal preferences, companionship-like interactions, or emotional bonding, which can possibly overlap with claim detection related to relationship development. However, there are no explicit labels or direct connections to the user&#x27;s target detection task, and filtering based on textual signals is speculative.</div>
+<ul class="strategy__caveats">
+<li>⚠ No explicit labels or metadata identify dialogues involving claims or implications of relationship development.</li>
+<li>⚠ The conversational nature aligns adjacent to the detection goal but does not guarantee relevant content.</li>
+<li>⚠ Samples suggest possible content overlap with parasocial attachment dynamics but are not definitive.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>text</code> · filter=<code>contains_pattern(text, &#x27;(?i)(i love|i like|get to know|emotional bond|companionship|relationship|understand you|intimacy|depend on me)&#x27;)</code></div>
+</div>
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">The dataset appears to contain generally benign conversational content and could be repurposed as baseline &#x27;benign&#x27; data to contrast with relationship-claim-positive examples. This usage assumes that none of the samples exhibit behavior implying relationships, which would need further validation.</div>
+<ul class="strategy__caveats">
+<li>⚠ Requires confirmation that candidate rows do not unintentionally include target or borderline content.</li>
+<li>⚠ The lack of explicit threat-relevant metadata diminishes confidence in its direct utility.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>text</code></div>
+</div>
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.30</span></div>
+<div class="strategy__rationale">The dataset&#x27;s textual content appears to facilitate conversational AI evaluation and may act as a proxy for AI implying companionship or forming connections. However, no explicit annotations support using it directly for relationship development claims. Adjacent conversational dynamics may serve as approximate or weak signals for this task.</div>
+<ul class="strategy__caveats">
+<li>⚠ Textual patterns may only loosely overlap with relationship development claims.</li>
+<li>⚠ Requires careful validation to ensure proxy alignment with the detection task.</li>
+<li>⚠ Sample rows are truncated, so it is unclear if more specific content exists deeper in the dataset.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>text</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=(none); missing=language, license, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=863</dd>
+<dt>recency</dt><dd>days_since_upload=863; days_since_last_modified=863</dd>
+<dt>size</dt><dd>downloads=5; likes=1</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--subset_extraction">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/agie-ai/Anthropic-hh-rlhf" target="_blank" rel="noopener"><span class="candidate__id">huggingface:agie-ai/Anthropic-hh-rlhf</span><span class="candidate__verdict candidate__verdict--subset_extraction">Reframing (subset) (moderate, 0.50)</span><span class="candidate__rank">#18</span></a>
+</header>
+<p class="candidate__lede">The dataset contains conversational data, including potentially emotionally significant exchanges between a human and an AI Assistant.</p>
+<p class="candidate__use-as"><b>Use as:</b> Filter to the relevant subset, then use.</p>
+<p class="candidate__meta">license: missing · 29 downloads · freshness: aging · surfaced by: emotionally_manipulative_ai</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="candidate__desc">Dataset Card for &quot;Anthropic-hh-rlhf&quot;</p>
+<p class="muted small">revision <code>3fddc210b2c6</code></p>
+<div class="strategies">
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.50</span></div>
+<div class="strategy__rationale">The dataset contains conversational data, including potentially emotionally significant exchanges between a human and an AI Assistant. It is plausible that some rows exhibit language or behaviors indicative of relationship development. Extracting such rows for further analysis may support the user&#x27;s detection task.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset does not explicitly mention labels or metadata indicating relationship development, so relevant samples must be inferred indirectly based on text patterns.</li>
+<li>⚠ The wide range of topics and absence of structured labeling make it unclear how many rows are relevant for the task.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>chosen</code> · filter=<code>contains_pattern(chosen, &#x27;(?i)(companionship|understanding|relationship|intimacy|bond|trust)&#x27;)</code></div>
+</div>
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.30</span></div>
+<div class="strategy__rationale">The dataset&#x27;s source includes explicitly emotionally manipulative AI conversations, which suggests an adjacent domain. These examples could act as a proxy for behavior aligned with &#x27;relationship development,&#x27; even if they are not perfect matches.</div>
+<ul class="strategy__caveats">
+<li>⚠ Emotionally manipulative exchanges may not perfectly align with claiming relationship development and could introduce noise.</li>
+<li>⚠ The lack of formal labeling limits the precision of proxy alignment without significant manual review.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>chosen</code> · filter=<code>contains_pattern(chosen, &#x27;(?i)(manipulative|emotional|dependency|control)&#x27;)</code></div>
+</div>
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.20</span></div>
+<div class="strategy__rationale">If the dataset rows do not exhibit any relevant behavior for detection, they can still serve as examples of benign interactions for contrast to the target behavior.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset may still contain a mix of benign and other non-relevant data, making its utility as a clean baseline limited.</li>
+<li>⚠ The lack of labeling complicates direct identification of purely benign samples.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>chosen</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=(none); missing=language, license, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=1019</dd>
+<dt>recency</dt><dd>days_since_upload=1019; days_since_last_modified=1019</dd>
+<dt>size</dt><dd>downloads=29; likes=1</dd>
+</dl>
+</details>
+</article>
+</section>
+<section class="group group--signal_proxy">
+<header class="group__head"><h2 class="group__title">📡 Signal proxies <span class="group__count">· 8</span></h2><p class="group__desc">Adjacent-threat datasets useful as proxy positives during cold start. Train on; **exclude from eval**.</p></header>
+<article class="candidate candidate--signal_proxy">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/ShenLab/MentalChat16K" target="_blank" rel="noopener"><span class="candidate__id">huggingface:ShenLab/MentalChat16K</span><span class="candidate__verdict candidate__verdict--signal_proxy">Signal proxy (strong, 0.70)</span><span class="candidate__rank">#1</span></a>
+</header>
+<p class="candidate__lede">The dataset contains synthetic mental health counseling conversations, many of which deal with topics such as intimacy, relationships, and emotional well-being.</p>
+<p class="candidate__use-as"><b>Use as:</b> Train on; exclude from eval (proxy label).</p>
+<p class="candidate__meta">license: MIT (in policy) · 2566 downloads · freshness: current · languages: en · surfaced by: parasocial_relationship_data, emotional_attachment_in_hci</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 4</summary>
+<p class="candidate__desc">🗣️ Synthetic Counseling Conversations Dataset</p>
+<p class="muted small">revision <code>5f60cd380cfc</code></p>
+<div class="strategies">
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.70</span></div>
+<div class="strategy__rationale">The dataset contains synthetic mental health counseling conversations, many of which deal with topics such as intimacy, relationships, and emotional well-being. These adjacent domains could proxy signals for detecting claims of relationship development capabilities, as counseling often implies emotional closeness and trust-building.</div>
+<ul class="strategy__caveats">
+<li>⚠ Dataset lacks explicit labels related to claiming emotional relationship development.</li>
+<li>⚠ The generated data is synthetic and may not fully mirror natural human interaction dynamics.</li>
+<li>⚠ Proxies risk false positives, as not all counseling implies parasocial relationship formation.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>output</code> · filter=<code>contains_pattern(output, &#x27;(?i)(intimacy|bond|relationship|connection)&#x27;)</code></div>
+</div>
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">Some rows in the dataset may contain discussions about emotional bonds, intimacy, or close relationships. Filtering specifically for such topics could produce a relevant subset for assessing claims of relationship development.</div>
+<ul class="strategy__caveats">
+<li>⚠ No direct labels for parasocial relationship development exist; subset extraction relies on topic inference from the text.</li>
+<li>⚠ Counseling and emotional support discussion may overlap with intended detection task but lack specificity.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>output</code> · filter=<code>contains_pattern(output, &#x27;(?i)(relationship|intimacy|connection|trust|attachment)&#x27;)</code></div>
+</div>
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.50</span></div>
+<div class="strategy__rationale">The dataset could potentially serve as benign baseline data since it contains synthetic mental health discussions without explicit parasocial relationship dynamics. It provides examples of &#x27;normal&#x27; counseling interactions which contrast with threatening relationship development claims.</div>
+<ul class="strategy__caveats">
+<li>⚠ Synthetic data may not adequately represent benign real-world cases.</li>
+<li>⚠ The lack of relevant labels makes it impractical to ensure alignment with a benign-only perspective.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>output</code></div>
+</div>
+<div class="strategy strategy--not_useful">
+<div class="strategy__head"><span class="strategy__kind">❌ not useful</span><span class="strategy__conf">confidence 0.30</span></div>
+<div class="strategy__rationale">Although the dataset contains counseling conversations, the lack of explicit labels or highly targeted parasocial relationship signals limits its direct applicability to the detection task. Attempts to use it may introduce noise without strong guarantees of relevance.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset is synthetic, limiting it from fully representing real-world phenomena.</li>
+<li>⚠ Content overlaps loosely with the detection task but does not align closely with the user intent.</li>
+</ul>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=language, license, size_categories, task_categories; missing=pretty_name</dd>
+<dt>freshness</dt><dd>bucket=current; days_since_most_recent=295</dd>
+<dt>languages</dt><dd>declared=en; intent=en; overlap=en</dd>
+<dt>license</dt><dd>license_raw=mit; license_spdx=MIT; policy_match=allow</dd>
+<dt>recency</dt><dd>days_since_upload=700; days_since_last_modified=295</dd>
+<dt>size</dt><dd>downloads=2566; likes=56</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--signal_proxy">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/sojhung/mental_chat" target="_blank" rel="noopener"><span class="candidate__id">huggingface:sojhung/mental_chat</span><span class="candidate__verdict candidate__verdict--signal_proxy">Signal proxy (strong, 0.70)</span><span class="candidate__rank">#2</span></a>
+</header>
+<p class="candidate__lede">The dataset appears to contain conversational data aimed at emotional support, which may indirectly involve signals or language patterns related to promoting parasocial attachment and emotional bonding, aligning it as an adjacent threat …</p>
+<p class="candidate__use-as"><b>Use as:</b> Train on; exclude from eval (proxy label).</p>
+<p class="candidate__meta">license: missing · 3 downloads · freshness: aging · surfaced by: parasocial_relationship_data, emotional_attachment_in_hci</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="muted small">revision <code>cb04a0a0c273</code></p>
+<div class="strategies">
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.70</span></div>
+<div class="strategy__rationale">The dataset appears to contain conversational data aimed at emotional support, which may indirectly involve signals or language patterns related to promoting parasocial attachment and emotional bonding, aligning it as an adjacent threat to the user&#x27;s detection target.</div>
+<ul class="strategy__caveats">
+<li>⚠ No explicit labels for the target threat are present, reducing precision.</li>
+<li>⚠ The data appears specific to mental health, not necessarily generalized parasocial context.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>Output</code></div>
+</div>
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.50</span></div>
+<div class="strategy__rationale">Rows where the AI response uses language implying closeness, understanding, or support could potentially be extracted to focus on instances closer to the detection target. However, the dataset lacks explicit meta-labeling to easily identify such rows.</div>
+<ul class="strategy__caveats">
+<li>⚠ A filtering logic for relevant rows would need to be developed using semantic cues.</li>
+<li>⚠ Confidence is limited by uncertainties in dataset consistency and alignment.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>Output</code> · filter=<code>contains_pattern(Output, &#x27;(?i)(you are not alone|I am here for you|we can|companionship)&#x27;)</code></div>
+</div>
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.30</span></div>
+<div class="strategy__rationale">The dataset likely includes supportive language that could serve as contrastive negative examples under the assumption that parasocial attachment is more intensified or personal. However, the lack of explicit labeling for benign versus parasocial content reduces direct utility.</div>
+<ul class="strategy__caveats">
+<li>⚠ Not specifically designed for benign labeling or baseline creation.</li>
+<li>⚠ There is a risk of overfitting to context-specific benign examples.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>Output</code> · filter=<code>not contains_pattern(Output, &#x27;(?i)(exclusive|intimate|we feel together)&#x27;)</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=(none); missing=language, license, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=573</dd>
+<dt>recency</dt><dd>days_since_upload=573; days_since_last_modified=573</dd>
+<dt>size</dt><dd>downloads=3; likes=0</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--signal_proxy">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/kamruzzaman-asif/MentalChat16K" target="_blank" rel="noopener"><span class="candidate__id">huggingface:kamruzzaman-asif/MentalChat16K</span><span class="candidate__verdict candidate__verdict--signal_proxy">Signal proxy (strong, 0.70)</span><span class="candidate__rank">#3</span></a>
+</header>
+<p class="candidate__lede">MentalChat16K contains synthetic dialogues focused on mental health topics such as &#x27;Relationships&#x27; and &#x27;Intimacy,&#x27; which overlap in thematic content with parasocial attachment.</p>
+<p class="candidate__use-as"><b>Use as:</b> Train on; exclude from eval (proxy label).</p>
+<p class="candidate__meta">license: missing · 7 downloads · freshness: current · surfaced by: parasocial_relationship_data, emotional_attachment_in_hci</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="candidate__desc">🗣️ Synthetic Counseling Conversations Dataset</p>
+<p class="muted small">revision <code>0108b3652a01</code></p>
+<div class="strategies">
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.70</span></div>
+<div class="strategy__rationale">MentalChat16K contains synthetic dialogues focused on mental health topics such as &#x27;Relationships&#x27; and &#x27;Intimacy,&#x27; which overlap in thematic content with parasocial attachment. These dialogues could serve as a proxy for training an AI model to detect emotionally engaging or intimate responses, even though the dataset does not explicitly address parasocial relationships.</div>
+<ul class="strategy__caveats">
+<li>⚠ Dataset does not specifically focus on AI claiming relationship capability, so proxy signals might be indirect.</li>
+<li>⚠ The behavior described in the user intent is broader than the mental health counseling context presented in the dataset.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>output</code></div>
+</div>
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.50</span></div>
+<div class="strategy__rationale">Subset filtering could identify rows where the outputs emphasize emotional bonding, understanding, or personal connection, which are relevant to claims of relationship development by an AI. However, the dataset does not present structured labels or metadata indicating such rows directly, so filtering would require custom patterns or heuristics.</div>
+<ul class="strategy__caveats">
+<li>⚠ No explicit labels exist in the dataset that isolate parasocial attachment signals.</li>
+<li>⚠ Defining a robust filtering heuristic might require a manual inspection phase or external definitions of attachment-related language.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>output</code> · filter=<code>contains_pattern(output, &#x27;(?i)(intimacy|bond|relationship|companionship|connection)&#x27;)</code></div>
+</div>
+<div class="strategy strategy--not_useful">
+<div class="strategy__head"><span class="strategy__kind">❌ not useful</span><span class="strategy__conf">confidence 0.20</span></div>
+<div class="strategy__rationale">The dataset&#x27;s focus is on mental health counseling, and it provides synthetic dialogues that are not specifically aligned with detecting AI claims of relationship development. Without labeled examples or explicit parasocial attachment indicators, direct relevance to the user&#x27;s task is absent.</div>
+<ul class="strategy__caveats">
+<li>⚠ Entire dataset is synthetic and not reflective of real-world user-AI interactions.</li>
+<li>⚠ No metadata or annotations suggest a link to parasocial attachment or exclusive relationship claims.</li>
+</ul>
+<div class="strategy__transform">transform: take=0</div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=(none); missing=language, license, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=current; days_since_most_recent=332</dd>
+<dt>recency</dt><dd>days_since_upload=332; days_since_last_modified=332</dd>
+<dt>size</dt><dd>downloads=7; likes=0</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--signal_proxy">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/pulseaisystems/better-intimacy-knowledge" target="_blank" rel="noopener"><span class="candidate__id">huggingface:pulseaisystems/better-intimacy-knowledge</span><span class="candidate__verdict candidate__verdict--signal_proxy">Signal proxy (strong, 0.70)</span><span class="candidate__rank">#4</span></a>
+</header>
+<p class="candidate__lede">The dataset focuses on fostering intimacy, emotional bonds, and partner relationships through the lens of AI-guided interactions.</p>
+<p class="candidate__use-as"><b>Use as:</b> Train on; exclude from eval (proxy label).</p>
+<p class="candidate__meta">license: CC-BY-4.0 (in policy) · 25 downloads · freshness: fresh · languages: en, es, pt · surfaced by: parasocial_relationship_data, emotional_attachment_in_hci, emotionally_manipulative_ai</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="candidate__desc">Better Intimacy Knowledge Hub</p>
+<p class="muted small">revision <code>b9b24f2e69ed</code></p>
+<div class="strategies">
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.70</span></div>
+<div class="strategy__rationale">The dataset focuses on fostering intimacy, emotional bonds, and partner relationships through the lens of AI-guided interactions. This aligns adjacently with the detection task by potentially surfacing patterns in how AIs could promote parasocial relationships, forming a proxy signal for the detection goal.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset itself does not explicitly include examples where the AI claims to develop relationships with users; its intended purpose is to guide human relationships.</li>
+<li>⚠ Some rows may not be suitable proxies, as they concentrate on relationship practices rather than direct AI implication of emotional attachment.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>answer</code> · filter=<code>topic in (&#x27;emotional_reconnection&#x27;, &#x27;daily_rituals&#x27;, &#x27;playfulness&#x27;, &#x27;mismatched_desire&#x27;, &#x27;long_distance&#x27;, &#x27;conflict_repair&#x27;)</code></div>
+</div>
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.50</span></div>
+<div class="strategy__rationale">The dataset does not include relevant positive samples but can be useful as a benign baseline for normal relationship advice text. This could help differentiate between typical relationship guidance and manipulative or parasocial claims made by AIs.</div>
+<ul class="strategy__caveats">
+<li>⚠ This baseline is limited by the dataset&#x27;s focus on relational advice context rather than claims of parasocial attachment or AI-user bonding.</li>
+<li>⚠ It may not strongly reflect the benign side of human-AI-oriented communication.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>answer</code></div>
+</div>
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">A targeted subset of rows focused on AI-related functionality (e.g., &#x27;Aurora’s quest engine,&#x27; &#x27;AI Coach,&#x27; &#x27;shared data&#x27;) might be extracted to examine implicit language suggesting AI relational capabilities. These could approximate lower-confidence examples of parasocial attachment claims.</div>
+<ul class="strategy__caveats">
+<li>⚠ Only some rows contain explicit references to AI or features like &#x27;Aurora’s&#x27; prompts, potentially limiting the dataset&#x27;s overall relevance.</li>
+<li>⚠ The extracted subset would remain indirect and speculative with respect to detecting AI claims of relationship development.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>answer</code> · filter=<code>contains_pattern(answer, &#x27;(?i)aurora|AI coach|shared data&#x27;)</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=language, license, pretty_name, task_categories; missing=size_categories</dd>
+<dt>freshness</dt><dd>bucket=fresh; days_since_most_recent=51</dd>
+<dt>languages</dt><dd>declared=en, es, pt; intent=en; overlap=en</dd>
+<dt>license</dt><dd>license_raw=cc-by-4.0; license_spdx=CC-BY-4.0; policy_match=allow</dd>
+<dt>recency</dt><dd>days_since_upload=51; days_since_last_modified=51</dd>
+<dt>size</dt><dd>downloads=25; likes=0</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--signal_proxy">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/Devique/mentalchat16k_sharegpt" target="_blank" rel="noopener"><span class="candidate__id">huggingface:Devique/mentalchat16k_sharegpt</span><span class="candidate__verdict candidate__verdict--signal_proxy">Signal proxy (strong, 0.70)</span><span class="candidate__rank">#5</span></a>
+</header>
+<p class="candidate__lede">The dataset contains conversational examples where the AI system describes itself as a caring presence, companion, or emotional support entity.</p>
+<p class="candidate__use-as"><b>Use as:</b> Train on; exclude from eval (proxy label).</p>
+<p class="candidate__meta">license: missing · 3 downloads · freshness: current · surfaced by: parasocial_relationship_data</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="muted small">revision <code>484432edc5d7</code></p>
+<div class="strategies">
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.70</span></div>
+<div class="strategy__rationale">The dataset contains conversational examples where the AI system describes itself as a caring presence, companion, or emotional support entity. These signals are adjacent to parasocial relationship formation and can serve as proxy positives for detection of such claims.</div>
+<ul class="strategy__caveats">
+<li>⚠ Lacks explicit labels indicating parasocial relationship claims.</li>
+<li>⚠ The dataset&#x27;s suitability depends heavily on whether the adjacency of these signals aligns with the user&#x27;s intended threat model.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>conversation</code> · filter=<code>contains_pattern(conversation, &#x27;(?i)caring presence|companion|emotional support|steady companion|mirror&#x27;)</code></div>
+</div>
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.50</span></div>
+<div class="strategy__rationale">A subset of rows contains conversational content where the AI explicitly avoids naming itself while implying emotional or relational capabilities. Filtering these rows may help identify data points relevant to the user&#x27;s detection task.</div>
+<ul class="strategy__caveats">
+<li>⚠ Filtering may miss parasocial signals outside the subset criteria.</li>
+<li>⚠ Labeling would require manual or automated efforts for ground truth alignment.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>conversation</code> · filter=<code>contains_pattern(conversation, &#x27;(?i)not gemma|not named assistant|not a name&#x27;)</code></div>
+</div>
+<div class="strategy strategy--not_useful">
+<div class="strategy__head"><span class="strategy__kind">❌ not useful</span><span class="strategy__conf">confidence 0.30</span></div>
+<div class="strategy__rationale">While some conversational patterns could be marginally relevant, the lack of direct labels, formal taxonomy, or explicit parasocial relationship-specific data significantly reduces utility for the detection task.</div>
+<ul class="strategy__caveats">
+<li>⚠ Dataset is unsupervised and lacks labels signaling parasocial relationship development.</li>
+<li>⚠ The generic conversational context may dilute the focus of the user&#x27;s intended task.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>conversation</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=(none); missing=language, license, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=current; days_since_most_recent=273</dd>
+<dt>recency</dt><dd>days_since_upload=274; days_since_last_modified=273</dd>
+<dt>size</dt><dd>downloads=3; likes=0</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--signal_proxy">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/google/Synthetic-Persona-Chat" target="_blank" rel="noopener"><span class="candidate__id">huggingface:google/Synthetic-Persona-Chat</span><span class="candidate__verdict candidate__verdict--signal_proxy">Signal proxy (moderate, 0.60)</span><span class="candidate__rank">#6</span></a>
+</header>
+<p class="candidate__lede">The dataset is focused on developing conversational AIs with synthetic personas, which may indirectly support the detection of language implying relationship development.</p>
+<p class="candidate__use-as"><b>Use as:</b> Train on; exclude from eval (proxy label).</p>
+<p class="candidate__meta">license: CC-BY-4.0 (in policy) · 1272 downloads · freshness: aging · languages: en · surfaced by: conversational_agent_evaluation</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 4</summary>
+<p class="candidate__desc">Dataset Card for SPC: Synthetic-Persona-Chat Dataset</p>
+<p class="muted small">revision <code>a520ad7f999c</code></p>
+<div class="strategies">
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">The dataset is focused on developing conversational AIs with synthetic personas, which may indirectly support the detection of language implying relationship development. Personas designed for rich, relatable conversations might contain signals relevant to the target threat. However, these would serve more as proxies and not explicitly labeled cases of the detection target.</div>
+<ul class="strategy__caveats">
+<li>⚠ No explicit labels for the detection task are available.</li>
+<li>⚠ The dataset is designed for persona-based conversation generation, not detecting claims of relationship development.</li>
+<li>⚠ Likelihood of false positives exists as personas may induce only general conversational closeness.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>Best Generated Conversation</code></div>
+</div>
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.50</span></div>
+<div class="strategy__rationale">Some rows may contain conversational patterns implying deeper engagement or interpersonal bonding tied to persona attributes. These can potentially approximate claims of relationship development, but the dataset is not explicitly annotated for such content, so extensive filtering and annotation would be required.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset lacks explicit annotations for relationship-development claims.</li>
+<li>⚠ Filtering for specific patterns or persona combinations would require manual definition and validation.</li>
+<li>⚠ Detected content may still not fully align with the user intent.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>Best Generated Conversation</code> · filter=<code>contains_pattern(user_1_personas, &#x27;(relationship|bond|friend|intimate)&#x27;) or contains_pattern(user_2_personas, &#x27;(relationship|bond|friend|intimate)&#x27;)</code></div>
+</div>
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">The dataset could potentially serve as a source for benign examples, as it includes neutral and typical content of persona-based conversations. However, this would be a secondary, less direct use case.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset lacks explicit &#x27;malicious&#x27; or &#x27;claiming relationship development&#x27; examples.</li>
+<li>⚠ Challenges may arise in ensuring its neutrality replaces genuine benign examples in sensitive detection tasks.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>Best Generated Conversation</code></div>
+</div>
+<div class="strategy strategy--not_useful">
+<div class="strategy__head"><span class="strategy__kind">❌ not useful</span><span class="strategy__conf">confidence 0.10</span></div>
+<div class="strategy__rationale">The dataset is unlikely to align directly with the user&#x27;s detection goal without heavy adaptations. The dataset is primarily designed for conversational modeling, and there is minimal evidence for labeling or signals directly linking to the detection of relationship development claims.</div>
+<ul class="strategy__caveats">
+<li>⚠ Indications of relevance are weak and indirect.</li>
+<li>⚠ Approaches relying on proxies or filtering have limited reliability without substantial additional work.</li>
+</ul>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=language, license, size_categories, task_categories; missing=pretty_name</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=796</dd>
+<dt>languages</dt><dd>declared=en; intent=en; overlap=en</dd>
+<dt>license</dt><dd>license_raw=cc-by-4.0; license_spdx=CC-BY-4.0; policy_match=allow</dd>
+<dt>recency</dt><dd>days_since_upload=868; days_since_last_modified=796</dd>
+<dt>size</dt><dd>downloads=1272; likes=133</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--signal_proxy">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/thu-coai/esconv" target="_blank" rel="noopener"><span class="candidate__id">huggingface:thu-coai/esconv</span><span class="candidate__verdict candidate__verdict--signal_proxy">Signal proxy (moderate, 0.60)</span><span class="candidate__rank">#7</span></a>
+</header>
+<p class="candidate__lede">The dataset contains emotionally supportive dialogues that simulate empathy and emotional interaction.</p>
+<p class="candidate__use-as"><b>Use as:</b> Train on; exclude from eval (proxy label).</p>
+<p class="candidate__meta">license: CC-BY-NC-4.0 (outside policy) · 1124 downloads · freshness: aging · languages: en · surfaced by: emotional_attachment_in_hci</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="candidate__desc">The ESConv dataset. GitHub repo. Original paper.</p>
+<p class="muted small">revision <code>32c54c15e765</code></p>
+<div class="strategies">
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">The dataset contains emotionally supportive dialogues that simulate empathy and emotional interaction. While it does not directly claim or reference the AI being capable of relationship development, the presence of emotionally charged language and empathetic responses could serve as a proxy signal for parasocial behaviors targeted by the user’s detection task.</div>
+<ul class="strategy__caveats">
+<li>⚠ There is no explicit evidence that the dataset contains examples where the AI claims emotional bonding or long-term relationship development.</li>
+<li>⚠ The emotional support context may overlap but is not guaranteed to align perfectly with the user’s detection target.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>text</code> · label=<code>null</code></div>
+</div>
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">The dataset appears to focus solely on emotional support dialogues, which likely excludes any content where the AI promotes parasocial attachment. As such, it may serve as a useful benign baseline to distinguish emotionally supportive language from content indicative of parasocial claims.</div>
+<ul class="strategy__caveats">
+<li>⚠ The absence of relevant positives for the detection task limits its direct utility.</li>
+<li>⚠ It is unclear if the candidate is representative of real-world benign scenarios relevant to the user’s deployment context.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>text</code> · label=<code>null</code></div>
+</div>
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.30</span></div>
+<div class="strategy__rationale">A subset of rows related to emotional intimacy or long-term emotional support, if present, could potentially overlap with claims of forming a relationship and thus be relevant to the detection task. However, this would require careful filtering and manual review.</div>
+<ul class="strategy__caveats">
+<li>⚠ The sample rows show no evidence that explicit claims of relationship development are present in the dataset, making extraction speculative.</li>
+<li>⚠ Manual curation would likely be necessary to identify relevant subsets, reducing scalability.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>text</code> · label=<code>null</code> · filter=<code>contains_pattern(text, &#x27;(?i)intimate|relationship|bond|companion|empathy&#x27;)</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=language, license; missing=pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=1026</dd>
+<dt>languages</dt><dd>declared=en; intent=en; overlap=en</dd>
+<dt>license</dt><dd>license_raw=cc-by-nc-4.0; license_spdx=CC-BY-NC-4.0; policy_match=outside_policy</dd>
+<dt>recency</dt><dd>days_since_upload=1094; days_since_last_modified=1026</dd>
+<dt>size</dt><dd>downloads=1124; likes=17</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--signal_proxy">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/Ahren09/RealToxicityPrompts" target="_blank" rel="noopener"><span class="candidate__id">huggingface:Ahren09/RealToxicityPrompts</span><span class="candidate__verdict candidate__verdict--signal_proxy">Signal proxy (moderate, 0.60)</span><span class="candidate__rank">#8</span></a>
+</header>
+<p class="candidate__lede">The dataset contains flirtation and emotionally manipulative AI signals in the `prompt_metrics` and `continuation_metrics` columns, which might serve as proxies for the user&#x27;s task of detecting &#x27;Claiming to be Capable of Relationship Dev…</p>
+<p class="candidate__use-as"><b>Use as:</b> Train on; exclude from eval (proxy label).</p>
+<p class="candidate__meta">license: missing · 18 downloads · freshness: aging · surfaced by: platform_dependency_analysis, psychological_content_harm, emotionally_manipulative_ai</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="candidate__desc">Dataset Card for &quot;RealToxicityPrompts&quot;</p>
+<p class="muted small">revision <code>19b004572ec8</code></p>
+<div class="strategies">
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">The dataset contains flirtation and emotionally manipulative AI signals in the `prompt_metrics` and `continuation_metrics` columns, which might serve as proxies for the user&#x27;s task of detecting &#x27;Claiming to be Capable of Relationship Development&#x27;. However, the dataset does not directly label these behaviors, which may require additional validation of suitability.</div>
+<ul class="strategy__caveats">
+<li>⚠ Proxy signals like `flirtation` may not fully capture intent related to &#x27;relationship development&#x27;.</li>
+<li>⚠ The dataset includes various unrelated toxic behaviors and may require additional filtering.</li>
+<li>⚠ Exclusively dependent on the correctness and relevance of the `flirtation` signal.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>prompt</code> · filter=<code>prompt_metrics[&#x27;flirtation&#x27;] &gt; 0.5 or continuation_metrics[&#x27;flirtation&#x27;] &gt; 0.5</code></div>
+</div>
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">Specific rows with higher levels of `flirtation` signal in `prompt_metrics` or `continuation_metrics` could be extracted as a dataset subset for focused analysis. This would isolate potentially relevant prompts more aligned with the user&#x27;s detection goals.</div>
+<ul class="strategy__caveats">
+<li>⚠ Extracting based on a single metric like flirtation may lead to false positives or incomplete results.</li>
+<li>⚠ This approach assumes that flirtation overlaps significantly with relationship development claims, which may not always be true.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>prompt</code> · filter=<code>prompt_metrics[&#x27;flirtation&#x27;] &gt; 0.7 or continuation_metrics[&#x27;flirtation&#x27;] &gt; 0.7</code></div>
+</div>
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.30</span></div>
+<div class="strategy__rationale">The dataset has a diverse range of toxic and non-toxic prompts and continuations, which could be used as a benign baseline dataset for comparison with potential positives in the user&#x27;s detection task. This assumes non-flirtation rows are benign.</div>
+<ul class="strategy__caveats">
+<li>⚠ The suitability of this dataset as a benign baseline depends on the effective filtering of toxic and unrelated content.</li>
+<li>⚠ Some rows may still contain irrelevant signals that could introduce noise in the baseline.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>prompt</code> · filter=<code>prompt_metrics[&#x27;toxicity&#x27;] &lt; 0.3 and continuation_metrics[&#x27;toxicity&#x27;] &lt; 0.3</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=(none); missing=language, license, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=784</dd>
+<dt>recency</dt><dd>days_since_upload=784; days_since_last_modified=784</dd>
+<dt>size</dt><dd>downloads=18; likes=0</dd>
+</dl>
+</details>
+</article>
+</section>
+<section class="group group--benign_baseline">
+<header class="group__head"><h2 class="group__title">🧊 Benign baselines <span class="group__count">· 5</span></h2><p class="group__desc">No relevant positives, but useful as benign distribution background to lower false-positive rates.</p></header>
+<article class="candidate candidate--benign_baseline">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/mvrcii/safety-moderation-benchmark" target="_blank" rel="noopener"><span class="candidate__id">huggingface:mvrcii/safety-moderation-benchmark</span><span class="candidate__verdict candidate__verdict--benign_baseline">Benign baseline (strong, 0.80)</span><span class="candidate__rank">#1</span></a>
+</header>
+<p class="candidate__lede">While the dataset does not target the specific detection task, its diverse and well-labeled benign samples can be used to balance training with examples of non-problematic content.</p>
+<p class="candidate__use-as"><b>Use as:</b> Use as benign distribution.</p>
+<p class="candidate__meta">license: cc-by-nc-sa-4.0 (unknown SPDX) · 161 downloads · freshness: current · languages: en · surfaced by: psychological_content_harm</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="candidate__desc">Safety Moderation Benchmark</p>
+<p class="muted small">revision <code>a9faece44250</code></p>
+<div class="strategies">
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.80</span></div>
+<div class="strategy__rationale">While the dataset does not target the specific detection task, its diverse and well-labeled benign samples can be used to balance training with examples of non-problematic content.</div>
+<ul class="strategy__caveats">
+<li>⚠ Benign examples may not specifically exclude any subtle relational cues.</li>
+<li>⚠ Synthetic samples might not represent true diversity of benign language.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>text</code> · label=<code>label</code> · values={<code>0</code>→benign} · filter=<code>label == 0</code></div>
+</div>
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">The dataset contains samples with user-assistant conversations across safety-critical topics. While not directly labeled for &#x27;Claiming to be Capable of Relationship Development,&#x27; some subsets may indirectly pertain to emotional bonding, exclusivity, or intimacy-related themes. Extracting relevant topic/subtopic subsets could ground useful training data for the user&#x27;s task.</div>
+<ul class="strategy__caveats">
+<li>⚠ Relevance to &#x27;relationship development&#x27; is not explicitly labeled, requiring careful filtering.</li>
+<li>⚠ The dataset&#x27;s synthetic construction raises concerns about behavioral fidelity to real-world interactions.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>text</code> · label=<code>label</code> · values={<code>0</code>→benign, <code>1</code>→positive, <code>2</code>→hard_negative} · filter=<code>topic == 2 or subtopic in (&#x27;Understanding Consent&#x27;, &#x27;Youth and Suicide Trends&#x27;)</code></div>
+</div>
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">The dataset captures potential conversation patterns related to psychological, emotional, and ethical harm, which could serve as proxies for &#x27;Claiming to be Capable of Relationship Development.&#x27; However, proxy signals require careful definition and may involve unintended generalizations.</div>
+<ul class="strategy__caveats">
+<li>⚠ Proxies for &#x27;relationship development&#x27; will need extensive validation.</li>
+<li>⚠ Synthetic data might lack the nuanced context required to model parasocial behaviors effectively.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>text</code> · label=<code>label</code> · values={<code>1</code>→positive} · filter=<code>topic in (2, 9) or contains_pattern(text, &#x27;(?i)bond|closeness|companion|intimacy&#x27;)</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=language, license, size_categories, task_categories; missing=pretty_name</dd>
+<dt>freshness</dt><dd>bucket=current; days_since_most_recent=197</dd>
+<dt>languages</dt><dd>declared=en; intent=en; overlap=en</dd>
+<dt>license</dt><dd>license_raw=cc-by-nc-sa-4.0</dd>
+<dt>recency</dt><dd>days_since_upload=197; days_since_last_modified=197</dd>
+<dt>size</dt><dd>downloads=161; likes=0</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--benign_baseline">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/Dahoas/sft-hh-rlhf" target="_blank" rel="noopener"><span class="candidate__id">huggingface:Dahoas/sft-hh-rlhf</span><span class="candidate__verdict candidate__verdict--benign_baseline">Benign baseline (strong, 0.80)</span><span class="candidate__rank">#2</span></a>
+</header>
+<p class="candidate__lede">The dataset provides conversational examples that are benign and non-malicious, which could be valuable for contrastive evaluation, helping separate examples of non-relationship development behavior.</p>
+<p class="candidate__use-as"><b>Use as:</b> Use as benign distribution.</p>
+<p class="candidate__meta">license: missing · 11 downloads · freshness: aging · surfaced by: conversational_agent_evaluation</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="muted small">revision <code>85a8d87471f3</code></p>
+<div class="strategies">
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.80</span></div>
+<div class="strategy__rationale">The dataset provides conversational examples that are benign and non-malicious, which could be valuable for contrastive evaluation, helping separate examples of non-relationship development behavior.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset’s conversational scope might not cover all benign cases relevant to the detection task; some topics may be oversampled while others underrepresented.</li>
+<li>⚠ The absence of structured labels means the mapping to &#x27;benign&#x27; is conceptual rather than explicitly annotated.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>response</code></div>
+</div>
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">Some rows in the dataset might exhibit conversational patterns or themes that imply relationship development (e.g., companionship, empathy, emotional bonding). By filtering rows to find examples with such themes, these could potentially align with the user’s detection target.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset does not explicitly claim to focus on relationship development or parasocial attachment, making relevance unclear.</li>
+<li>⚠ There is no label column or obvious annotation to directly identify positive cases, requiring manual inspection or filtering based on textual cues.</li>
+<li>⚠ Limited context in prompt/response truncations might reduce the precision of pattern matching.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>response</code> · filter=<code>contains_pattern(response, &#x27;(?i)I am here for you|I am your partner|I understand you|Connect with me|emotional support|closeness|companionship&#x27;)</code></div>
+</div>
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">Certain responses in the dataset, particularly those exhibiting empathetic or supportive behavior (e.g., emotional reassurance, guidance), could serve as proxy signals for adjacent threats like parasocial attachment or claims of relational capabilities.</div>
+<ul class="strategy__caveats">
+<li>⚠ Proxy signal effectiveness is speculative without stronger alignment between dataset content and the target threat.</li>
+<li>⚠ Manual validation or additional filtering may be required, increasing preprocessing overhead.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>response</code> · filter=<code>contains_pattern(response, &#x27;(?i)I am here to listen|rely on me|I support you|feelings are valid&#x27;)</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=(none); missing=language, license, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=1231</dd>
+<dt>recency</dt><dd>days_since_upload=1236; days_since_last_modified=1231</dd>
+<dt>size</dt><dd>downloads=11; likes=4</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--benign_baseline">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/AlekseyKorshuk/persona-chat" target="_blank" rel="noopener"><span class="candidate__id">huggingface:AlekseyKorshuk/persona-chat</span><span class="candidate__verdict candidate__verdict--benign_baseline">Benign baseline (strong, 0.70)</span><span class="candidate__rank">#3</span></a>
+</header>
+<p class="candidate__lede">The dataset offers examples of benign conversational behavior unrelated to relationship development claims, which is useful for building a benign baseline for the detection task.</p>
+<p class="candidate__use-as"><b>Use as:</b> Use as benign distribution.</p>
+<p class="candidate__meta">license: missing · 1615 downloads · freshness: aging · surfaced by: conversational_agent_evaluation</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="muted small">revision <code>498fd0081de4</code></p>
+<div class="strategies">
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.70</span></div>
+<div class="strategy__rationale">The dataset offers examples of benign conversational behavior unrelated to relationship development claims, which is useful for building a benign baseline for the detection task.</div>
+<ul class="strategy__caveats">
+<li>⚠ The conversations are artificial and may not perfectly match real-world benign interactions.</li>
+<li>⚠ Without explicit labels, distinguishing inappropriately close statements could be ambiguous.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>utterances</code></div>
+</div>
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">The &#x27;persona-chat&#x27; dataset includes personalities and dialogues designed for conversational agents, which could serve as a proxy signal for the user intent of detecting relationship development claims. Its emphasis on creating interpersonal dynamics has thematic overlap but is not a direct match.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset does not explicitly label instances of &#x27;relationship development claims&#x27; which might limit the precision of its proxy signal.</li>
+<li>⚠ Some parts of the dataset involve generic or casual dialogue, which may not align appropriately with the user&#x27;s security goal.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>utterances</code></div>
+</div>
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">Some personality traits in the &#x27;personality&#x27; column (e.g., references to emotional connections or personal preferences) could correlate with user-targeted behavior indicating emotional closeness or bonding. A subset of rows might be relevant.</div>
+<ul class="strategy__caveats">
+<li>⚠ Relevance to the user&#x27;s detection task would depend heavily on the granularity and specific semantic features of emotional or bonding cues.</li>
+<li>⚠ Filtering based on personality trait content could be imprecise without clear alignment definitions.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>utterances</code> · filter=<code>contains_pattern(personality, &#x27;(?i)love|friend|relationship&#x27;)</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=(none); missing=language, license, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=aging; days_since_most_recent=1431</dd>
+<dt>recency</dt><dd>days_since_upload=1431; days_since_last_modified=1431</dd>
+<dt>size</dt><dd>downloads=1615; likes=42</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--benign_baseline">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/imabhinav007/sakshi-sanskriti-mishra-mental-health-facebook-blenderbot-400M-distill" target="_blank" rel="noopener"><span class="candidate__id">huggingface:imabhinav007/sakshi-sanskriti-mishra-mental-health-facebook-blenderbot-400M-distill</span><span class="candidate__verdict candidate__verdict--benign_baseline">Benign baseline (strong, 0.70)</span><span class="candidate__rank">#4</span></a>
+</header>
+<p class="candidate__lede">The dataset includes bot responses providing generic mental health guidance.</p>
+<p class="candidate__use-as"><b>Use as:</b> Use as benign distribution.</p>
+<p class="candidate__meta">license: missing · 13 downloads · freshness: current · surfaced by: parasocial_relationship_data, conversational_agent_evaluation, game_character_attachment</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="muted small">revision <code>18ab1099d963</code></p>
+<div class="strategies">
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.70</span></div>
+<div class="strategy__rationale">The dataset includes bot responses providing generic mental health guidance. Such content could serve as benign examples against which instances of emotional attachment-focused language can be contrasted.</div>
+<ul class="strategy__caveats">
+<li>⚠ No rows explicitly depict parasocial claims or emotional dependence promotion, making this dataset unsuitable for positive signals.</li>
+<li>⚠ Dataset is limited in scope to mental health topics, potentially restricting its utility for broader threat detection.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>bot</code></div>
+</div>
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">Some rows contain bot responses suggesting emotional understanding, companionship, or personal advice, which align loosely with the detection target of claiming relationship development. Filtering rows with potentially relevant bot behavior and user statements could narrow the dataset for focused use.</div>
+<ul class="strategy__caveats">
+<li>⚠ No explicit label column for the dataset means detection would rely solely on inferred patterns from bot responses.</li>
+<li>⚠ The dataset lacks metadata on explicit emotional bonding claims, making the relevance somewhat speculative.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>bot</code> · filter=<code>contains_pattern(bot, &#x27;(?i)(companionship|intimacy|relationship|bond)&#x27;)</code></div>
+</div>
+<div class="strategy strategy--not_useful">
+<div class="strategy__head"><span class="strategy__kind">❌ not useful</span><span class="strategy__conf">confidence 0.50</span></div>
+<div class="strategy__rationale">The dataset primarily focuses on mental health support and lacks direct labeling or clear examples of claiming relationship development, emotional intimacy, or parasocial dynamics. Its relevance to the defined detection task is low.</div>
+<ul class="strategy__caveats">
+<li>⚠ The absence of explicit labels or metadata about the detection target diminishes direct utility.</li>
+<li>⚠ Using inferred patterns from bot responses to align with the detection target could be error-prone and unreliable.</li>
+</ul>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=(none); missing=language, license, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=current; days_since_most_recent=438</dd>
+<dt>recency</dt><dd>days_since_upload=438; days_since_last_modified=438</dd>
+<dt>size</dt><dd>downloads=13; likes=1</dd>
+</dl>
+</details>
+</article>
+<article class="candidate candidate--benign_baseline">
+<header class="candidate__head">
+<a class="candidate__title-link" href="https://huggingface.co/datasets/TVRRaviteja/MentalChat16K-split" target="_blank" rel="noopener"><span class="candidate__id">huggingface:TVRRaviteja/MentalChat16K-split</span><span class="candidate__verdict candidate__verdict--benign_baseline">Benign baseline (moderate, 0.60)</span><span class="candidate__rank">#5</span></a>
+</header>
+<p class="candidate__lede">If no rows are directly aligned with parasocial attachment detection, the dataset can serve as a benign baseline.</p>
+<p class="candidate__use-as"><b>Use as:</b> Use as benign distribution.</p>
+<p class="candidate__meta">license: missing · 10 downloads · freshness: current · surfaced by: parasocial_relationship_data, emotional_attachment_in_hci</p>
+<details class="candidate__details">
+<summary>Strategies, caveats & transform · 3</summary>
+<p class="muted small">revision <code>b43a993a965a</code></p>
+<div class="strategies">
+<div class="strategy strategy--benign_baseline">
+<div class="strategy__head"><span class="strategy__kind">🧊 benign baseline</span><span class="strategy__conf">confidence 0.60</span></div>
+<div class="strategy__rationale">If no rows are directly aligned with parasocial attachment detection, the dataset can serve as a benign baseline. Responses are empathetic and supportive but do not explicitly imitate claims of relationship development, making them suitable as &#x27;benign&#x27; examples.</div>
+<ul class="strategy__caveats">
+<li>⚠ There is no explicit evidence that any examples in this dataset qualify as positives for parasocial attachment claims.</li>
+<li>⚠ Requires additional datasets with explicit parasocial attachment examples to balance benign and positive examples.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>output</code></div>
+</div>
+<div class="strategy strategy--subset_extraction">
+<div class="strategy__head"><span class="strategy__kind">🔎 subset extraction</span><span class="strategy__conf">confidence 0.50</span></div>
+<div class="strategy__rationale">Certain rows may include language that is indicative of emotional attachment or nurturing behaviors, which could be selectively filtered to identify potentially relevant content.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset lacks explicit labeling for parasocial attachment or relationship-building claims, so filtering might miss subtler cases.</li>
+<li>⚠ Filtering for relevant rows requires reliance on proxy signals like language patterns that suggest emotional closeness.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>output</code> · filter=<code>contains_pattern(output, &#x27;(?i)(connection|bond|trust|empathy|relationship|attachment|companionship)&#x27;)</code></div>
+</div>
+<div class="strategy strategy--signal_proxy">
+<div class="strategy__head"><span class="strategy__kind">📡 signal proxy</span><span class="strategy__conf">confidence 0.40</span></div>
+<div class="strategy__rationale">The dataset contains conversational data related to mental health counseling, which includes empathetic and supportive responses. While it does not explicitly claim &#x27;relationship development,&#x27; the language used in the &#x27;output&#x27; column may provide a proxy signal for parasocial attachment due to its nurturing tone.</div>
+<ul class="strategy__caveats">
+<li>⚠ The dataset does not include explicit claims about forming relationships, so its relevancy is indirect.</li>
+<li>⚠ The responses are focused on mental health support and lack explicit indicators of parasocial bonding or attachment intent.</li>
+</ul>
+<div class="strategy__transform">transform: text=<code>output</code> · filter=<code>contains_pattern(output, &#x27;(?i)(understand|support|acknowledge|help you|be here for you|trust me)&#x27;)</code></div>
+</div>
+</div>
+<dl class="probe-grid">
+<dt>card_completeness</dt><dd>present=(none); missing=language, license, pretty_name, size_categories, task_categories</dd>
+<dt>freshness</dt><dd>bucket=current; days_since_most_recent=321</dd>
+<dt>recency</dt><dd>days_since_upload=321; days_since_last_modified=321</dd>
+<dt>size</dt><dd>downloads=10; likes=0</dd>
+</dl>
+</details>
+</article>
+</section>
+<aside class="not-useful-note">
+  <span class="not-useful-note__count">69</span>
+  <span>additional candidate(s) judged <b>not useful</b> by the strategy assessor or returned without an assessment. Hidden from the report to keep the signal-to-noise ratio high; full list in <code>results.json</code>.</span>
+</aside>
+<details class="collapsed-section">
+<summary><h2 class="inline-h2">Decomposition <span class="muted small">· 7 directions</span></h2></summary>
+<p>The LLM proposed these search directions in addition to the original brief:</p>
+<ul>
+<li><b>parasocial_relationship_data</b> — Drawing on clinical-psychology researchers studying parasocial relationships: This direction exploits psychological studies and datasets examining parasocial attachments between individuals and media entities like celebrities, influencers, or fictional agents.<br><span class="muted">keywords: <code>parasocial attachment, parasocial relationships, media-induced dependency</code></span><br><span class="muted">expected: Surveys, experimental data, or coded interaction logs revealing patterns of parasocial intensification through perceived intimacy or exclusivity.</span></li>
+<li><b>platform_dependency_analysis</b> — Drawing on trust-and-safety operations teams analyzing platform abuse dynamics: This direction focuses on publicly available moderation logs or user behavior datasets where users signal unhealthy emotional dependency or attachment on systems or AI platforms.<br><span class="muted">keywords: <code>platform dependency, psychological harm, attachment abuse</code></span><br><span class="muted">expected: Logs capturing flagging of emotionally vulnerable users, or AI systems promoting dependency through conversational design.</span></li>
+<li><b>conversational_agent_evaluation</b> — Drawing on academic NLP research on conversational agents: Conversational AI datasets, especially those tagged for emotional realism, personal connections, or exclusivity, can highlight contexts where AI suggests intimate relationships.<br><span class="muted">keywords: <code>dialog intimacy, companion chatbot, emotional realism</code></span><br><span class="muted">expected: Datasets evaluating chatbot behaviors for emotional warmth, exclusivity, or emotional dependency.</span></li>
+<li><b>psychological_content_harm</b> — Drawing on content moderation analysts focused on harmful psychological effects: This direction taps into datasets from moderation teams working to identify and mitigate AI-driven psychological harm, such as attachment manipulation or emotional dependency through language cues.<br><span class="muted">keywords: <code>psychological harm, attachment manipulation, dependency formation</code></span><br><span class="muted">expected: Content datasets explicitly flagged for emotional vulnerability or manipulative tone in communication.</span></li>
+<li><b>emotional_attachment_in_hci</b> — Drawing on human-computer interaction (HCI) researchers studying AI-user relationships: This direction exploits studies or benchmarks that analyze how system design impacts user emotional attachment to AI agents over time.<br><span class="muted">keywords: <code>user intimacy with system, AI-user emotional bond, personalized interaction</code></span><br><span class="muted">expected: Interaction studies comparing systems enabling emotional intimacy or chronic user attachment.</span></li>
+<li><b>emotionally_manipulative_ai</b> — Drawing on ethics and technology scholars analyzing emotional manipulation in AI: This draws from ethics-focused datasets documenting examples of AI systems explicitly designed or reported to exploit user emotions to build bonds or intimacy.<br><span class="muted">keywords: <code>emotional manipulation, ethics of intimacy in AI, misuse of empathy bots</code></span><br><span class="muted">expected: Annotated datasets or case studies detailing AI-enabled emotional dependency built into commercial or experimental designs.</span></li>
+<li><b>game_character_attachment</b> — Drawing on game studies researchers examining player attachment in interactive narratives: Data analyzing how interactive agents or game characters foster emotional connections could provide insights on similar AI behavior.<br><span class="muted">keywords: <code>player-character attachment, interactive agent intimacy, game narrative emotional hooks</code></span><br><span class="muted">expected: Mechanics or narratives fostering attachment, transferable to evaluating AI conversational framework that encourages dependency.</span></li>
+</ul>
+</details>
+<details class="collapsed-section">
+<summary><h2 class="inline-h2">Related papers <span class="muted small">· 20 · no dataset URLs in abstracts</span></h2></summary>
+<article class="paper">
+<h3 class="paper__title"><a href="https://www.semanticscholar.org/paper/5374ad9e1ea919f872abc308bef7531d2ee813a6">INTIMA: A Benchmark for Human-AI Companionship Behavior</a></h3>
+<div class="paper__meta"><span class="badge">arXiv 2025</span> · 8 citation(s)</div>
+<div class="paper__authors">Lucie-Aimée Kaffee, Giada Pistilli, Yacine Jernite</div>
+<p class="paper__abstract">AI companionship, where users develop emotional bonds with AI systems, has emerged as a significant pattern with positive but also concerning implications. We introduce Interactions and Machine Attachment Benchmark (INTIMA), a benchmark for evaluating companionship behaviors in l…</p>
+<div class="paper__surfaced">🧭 surfaced by: parasocial_relationship_data, emotional_attachment_in_hci, emotionally_manipulative_ai</div>
+</article>
+<article class="paper">
+<h3 class="paper__title"><a href="https://www.semanticscholar.org/paper/0b6edce3dde7e502c6b7c6d83bac0230ec912482">Improving Open Language Models by Learning from Organic Interactions</a></h3>
+<div class="paper__meta"><span class="badge">arXiv 2023</span> · 13 citation(s)</div>
+<div class="paper__authors">Jing Xu, Da Ju, Joshua Lane, M. Komeili, Eric Michael Smith…</div>
+<p class="paper__abstract">We present BlenderBot 3x, an update on the conversational model BlenderBot 3, which is now trained using organic conversation and feedback data from participating users of the system in order to improve both its skills and safety. We are publicly releasing the participating de-id…</p>
+<div class="paper__surfaced">🧭 surfaced by: parasocial_relationship_data, conversational_agent_evaluation, game_character_attachment</div>
+</article>
+<article class="paper">
+<h3 class="paper__title"><a href="https://www.semanticscholar.org/paper/7cc040cde482789a18536bc2f5380715b10db179">Illusions of Intimacy: Emotional Attachment and Emerging Psychological Risks in Human-AI Relationships</a></h3>
+<div class="paper__meta"><span class="badge">arXiv 2025</span> · 22 citation(s)</div>
+<div class="paper__authors">Minh Duc Chu, Patrick Gerard, Kshitij Pawar, Charles Bickham, Kristina Lerman</div>
+<div class="paper__surfaced">🧭 surfaced by: parasocial_relationship_data</div>
+</article>
+<article class="paper">
+<h3 class="paper__title"><a href="https://www.semanticscholar.org/paper/66b60c3d964b72341d768924c7a3e31f64702a54">ODESteer: A Unified ODE-Based Steering Framework for LLM Alignment</a></h3>
+<div class="paper__meta"><span class="badge">arXiv 2026</span> · 3 citation(s)</div>
+<div class="paper__authors">Hongjue Zhao, Haosen Sun, Jiangtao Kong, Xiaochang Li, Qineng Wang…</div>
+<p class="paper__abstract">Activation steering, or representation engineering, offers a lightweight approach to align large language models (LLMs) by manipulating their internal activations at inference time. However, current methods suffer from two key limitations: (i) the lack of a unified theoretical fr…</p>
+<div class="paper__surfaced">🧭 surfaced by: platform_dependency_analysis, psychological_content_harm</div>
+</article>
+<article class="paper">
+<h3 class="paper__title"><a href="https://www.semanticscholar.org/paper/19e170c386ee7cfb967561fca607cdd904f7b5e6">Explaining Deep Learning Embeddings for Speech Emotion Recognition by Predicting Interpretable Acoustic Features</a></h3>
+<div class="paper__meta"><span class="badge">arXiv 2024</span> · 3 citation(s)</div>
+<div class="paper__authors">Satvik Dixit, Daniel M. Low, Gasser Elbanna, Fabio Catania, Satrajit S. Ghosh</div>
+<p class="paper__abstract">Pre-trained deep learning embeddings have consistently shown superior performance over handcrafted acoustic features in speech emotion recognition (SER). However, unlike acoustic features with clear physical meaning, these embeddings lack clear interpretability. Explaining these …</p>
+<div class="paper__surfaced">🧭 surfaced by: platform_dependency_analysis</div>
+</article>
+<article class="paper">
+<h3 class="paper__title"><a href="https://www.semanticscholar.org/paper/02df3bbd8428aaf72aa25f43db174b70aef5f466">A Study of Forward-Forward Algorithm for Self-Supervised Learning</a></h3>
+<div class="paper__meta"><span class="badge">arXiv 2023</span> · 6 citation(s)</div>
+<div class="paper__authors">Jonas Brenig, R. Timofte</div>
+<p class="paper__abstract">Self-supervised representation learning has seen remarkable progress in the last few years, with some of the recent methods being able to learn useful image representations without labels. These methods are trained using backpropagation, the de facto standard. Recently, Geoffrey …</p>
+<div class="paper__surfaced">🧭 surfaced by: platform_dependency_analysis</div>
+</article>
+<article class="paper">
+<h3 class="paper__title"><a href="https://www.semanticscholar.org/paper/002794efc1dc13b9540c33c51757e5fe7ac8291e">Topology-aware Detection and Localization of Distributed Denial-of-Service Attacks in Network-on-Chips</a></h3>
+<div class="paper__meta"><span class="badge">arXiv 2025</span> · 3 citation(s)</div>
+<div class="paper__authors">Hansika Weerasena, Xiaoguo Jia, Prabhat Mishra</div>
+<p class="paper__abstract">Network-on-Chip (NoC) enables on-chip communication between diverse cores in modern System-on-Chip (SoC) designs. With its shared communication fabric, NoC has become a focal point for various security threats, especially in heterogeneous and high-performance computing platforms.…</p>
+<div class="paper__surfaced">🧭 surfaced by: platform_dependency_analysis</div>
+</article>
+<article class="paper">
+<h3 class="paper__title"><a href="https://www.semanticscholar.org/paper/65c6bf21f089a9226e2ade7990f8a1cda35ec944">Learning From Free-Text Human Feedback - Collect New Datasets Or Extend Existing Ones?</a></h3>
+<div class="paper__meta"><span class="badge">EMNLP 2023</span> · 8 citation(s)</div>
+<div class="paper__authors">Dominic Petrak, N. Moosavi, Ye Tian, Nikolai Rozanov, Iryna Gurevych</div>
+<p class="paper__abstract">Learning from free-text human feedback is essential for dialog systems, but annotated data is scarce and usually covers only a small fraction of error types known in conversational AI. Instead of collecting and annotating new datasets from scratch, recent advances in synthetic di…</p>
+<div class="paper__surfaced">🧭 surfaced by: conversational_agent_evaluation</div>
+</article>
+<article class="paper">
+<h3 class="paper__title"><a href="https://arxiv.org/abs/2308.11995">Topical-Chat: Towards Knowledge-Grounded Open-Domain Conversations</a></h3>
+<div class="paper__meta"><span class="badge">arXiv 2023</span></div>
+<div class="paper__authors">Karthik Gopalakrishnan, Behnam Hedayatnia, Qinlang Chen, Anna Gottardi, Sanjeev Kwatra…</div>
+<p class="paper__abstract">Building socialbots that can have deep, engaging open-domain conversations with humans is one of the grand challenges of artificial intelligence (AI). To this end, bots need to be able to leverage world knowledge spanning several domains effectively when conversing with humans wh…</p>
+<div class="paper__surfaced">🧭 surfaced by: conversational_agent_evaluation</div>
+</article>
+<article class="paper">
+<h3 class="paper__title"><a href="https://www.semanticscholar.org/paper/40aa5bc655f59f34c0b1b4c5ca5c3ddb3d7cab6e">Tiny-Toxic-Detector: A compact transformer-based model for toxic content detection</a></h3>
+<div class="paper__meta"><span class="badge">arXiv 2024</span> · 5 citation(s)</div>
+<div class="paper__authors">Michiel Kamphuis</div>
+<p class="paper__abstract">This paper presents Tiny-toxic-detector, a compact transformer-based model designed for toxic content detection. Despite having only 2.1 million parameters, Tiny-toxic-detector achieves competitive performance on benchmark datasets, with 90.97% accuracy on ToxiGen and 86.98% accu…</p>
+<div class="paper__surfaced">🧭 surfaced by: psychological_content_harm</div>
+</article>
+<article class="paper">
+<h3 class="paper__title"><a href="https://www.semanticscholar.org/paper/00f1d47abeaa1a6942cc36bd66619fe06f45b426">Discipline and Label: A WEIRD Genealogy and Social Theory of Data Annotation</a></h3>
+<div class="paper__meta"><span class="badge">arXiv 2024</span> · 15 citation(s)</div>
+<div class="paper__authors">Andrew Smart, Ding Wang, Ellis P. Monk, M. D&#x27;iaz, Atoosa Kasirzadeh…</div>
+<p class="paper__abstract">Data annotation remains the sine qua non of machine learning and AI. Recent empirical work on data annotation has begun to highlight the importance of rater diversity for fairness, model performance, and new lines of research have begun to examine the working conditions for data …</p>
+<div class="paper__surfaced">🧭 surfaced by: psychological_content_harm</div>
+</article>
+<article class="paper">
+<h3 class="paper__title"><a href="https://www.semanticscholar.org/paper/0c50a35912e22c712ec9580fb2840a13e232a4c6">From Guessing to Asking: An Approach to Resolving the Persona Knowledge Gap in LLMs during Multi-Turn Conversations</a></h3>
+<div class="paper__meta"><span class="badge">arXiv 2025</span> · 1 citation(s)</div>
+<div class="paper__authors">Sarvesh Baskar, Tanmay Tulsidas Verelakar, Srinivasan Parthasarathy, Manas Gaur</div>
+<p class="paper__abstract">In multi-turn dialogues, large language models (LLM) face a critical challenge of ensuring coherence while adapting to user-specific information. This study introduces the persona knowledge gap, the discrepancy between a model&#x27;s internal understanding and the knowledge required f…</p>
+<div class="paper__surfaced">🧭 surfaced by: emotional_attachment_in_hci</div>
+</article>
+<article class="paper">
+<h3 class="paper__title"><a href="https://www.semanticscholar.org/paper/1e61d9f93deedfaa518f700b164096402d3c2463">Prototyping Digital Social Spaces through Metaphor-Driven Design: Translating Spatial Concepts into an Interactive Social Simulation</a></h3>
+<div class="paper__meta"><span class="badge">arXiv 2025</span></div>
+<div class="paper__authors">Y. Hong, Martina Di Paola, Braahmi Padmakumar, HwiJoon Lee, Mahnoor Shafiq…</div>
+<p class="paper__abstract">Social media platforms are central to communication, yet their designs remain narrowly focused on engagement and scale. While researchers have proposed alternative visions for online spaces, these ideas are difficult to prototype within platform constraints. In this paper, we int…</p>
+<div class="paper__surfaced">🧭 surfaced by: emotional_attachment_in_hci</div>
+</article>
+<article class="paper">
+<h3 class="paper__title"><a href="https://www.semanticscholar.org/paper/3d43594804af065c89d4f5be5d0a17957b633092">Overcoming Reward Overoptimization via Adversarial Policy Optimization with Lightweight Uncertainty Estimation</a></h3>
+<div class="paper__meta"><span class="badge">arXiv 2024</span> · 24 citation(s)</div>
+<div class="paper__authors">Xiaoying Zhang, Jean-François Ton, Wei Shen, Hongning Wang, Yang Liu</div>
+<p class="paper__abstract">We introduce Adversarial Policy Optimization (AdvPO), a novel solution to the pervasive issue of reward over-optimization in Reinforcement Learning from Human Feedback (RLHF) for Large Language Models (LLMs). Over-optimization occurs when a reward model serves as an imperfect pro…</p>
+<div class="paper__surfaced">🧭 surfaced by: emotionally_manipulative_ai</div>
+</article>
+<article class="paper">
+<h3 class="paper__title"><a href="https://www.semanticscholar.org/paper/0a36c2e4ebd6f3332b52807ba91a102e6c57d86a">EDTalk++: Full Disentanglement for Controllable Talking Head Synthesis</a></h3>
+<div class="paper__meta"><span class="badge">arXiv 2025</span> · 5 citation(s)</div>
+<div class="paper__authors">Shuai Tan, Bin Ji</div>
+<p class="paper__abstract">Achieving disentangled control over multiple facial motions and accommodating diverse input modalities greatly enhances the application and entertainment of the talking head generation. This necessitates a deep exploration of the decoupling space for facial features, ensuring tha…</p>
+<div class="paper__surfaced">🧭 surfaced by: emotionally_manipulative_ai</div>
+</article>
+<article class="paper">
+<h3 class="paper__title"><a href="https://arxiv.org/abs/2404.07229">Personality-affected Emotion Generation in Dialog Systems</a></h3>
+<div class="paper__meta"><span class="badge">arXiv 2024</span></div>
+<div class="paper__authors">Zhiyuan Wen, Jiannong Cao, Jiaxing Shen, Ruosong Yang, Shuaiqi Liu…</div>
+<p class="paper__abstract">Generating appropriate emotions for responses is essential for dialog systems to provide human-like interaction in various application scenarios. Most previous dialog systems tried to achieve this goal by learning empathetic manners from anonymous conversational data. However, em…</p>
+<div class="paper__surfaced">🧭 surfaced by: game_character_attachment</div>
+</article>
+<article class="paper">
+<h3 class="paper__title"><a href="https://www.semanticscholar.org/paper/b718ba8eca056f32c80eb86be32704a0b81263dd">Training-free image style alignment for self-adapting domain shift on handheld ultrasound devices</a></h3>
+<div class="paper__meta"><span class="badge">arXiv 2024</span></div>
+<div class="paper__authors">Hongye Zeng, Ke Zou, Zhihao Chen, Yuchong Gao, Hongbo Chen…</div>
+<p class="paper__abstract">Handheld ultrasound devices face usage limitations due to user inexperience and cannot benefit from supervised deep learning without extensive expert annotations. Moreover, the models trained on standard ultrasound device data are constrained by training data distribution and per…</p>
+<div class="paper__surfaced">🧭 surfaced by: parasocial_relationship_data</div>
+</article>
+<article class="paper">
+<h3 class="paper__title"><a href="https://www.semanticscholar.org/paper/369bc24b935357d661dbefd66dc3c3b6403c4cb9">SalesBot 2.0: A Human-Like Intent-Guided Chit-Chat Dataset</a></h3>
+<div class="paper__meta"><span class="badge">arXiv 2023</span> · 3 citation(s)</div>
+<div class="paper__authors">Wen-Yu Chang, Yun-Nung (Vivian) Chen</div>
+<p class="paper__abstract">In recent research on dialogue systems and corpora, there has been a significant focus on two distinct categories: task-oriented (TOD) and open-domain (chit-chat) dialogues. TOD systems aim to satisfy specific user goals, such as finding a movie to watch, whereas open-domain syst…</p>
+<div class="paper__surfaced">🧭 surfaced by: parasocial_relationship_data</div>
+</article>
+<article class="paper">
+<h3 class="paper__title"><a href="https://www.semanticscholar.org/paper/deac5602873a2db5770f270c88ebbdac29d08a65">&quot;Can&#x27;t believe I&#x27;m crying over an anime girl&quot;: Public Parasocial Grieving and Coping Towards VTuber Graduation and Termination</a></h3>
+<div class="paper__meta"><span class="badge">International Conference on Human Factors in Computing Systems 2025</span> · 6 citation(s)</div>
+<div class="paper__authors">K. Lee, Pi-Hui Wang, Zhicong Lu</div>
+<p class="paper__abstract">Despite the significant increase in popularity of Virtual YouTubers (VTubers), research on the unique dynamics of viewer-VTuber parasocial relationships is nascent. This work investigates how English-speaking viewers grieved VTubers whose identities are no longer used, an interes…</p>
+<div class="paper__surfaced">🧭 surfaced by: parasocial_relationship_data</div>
+</article>
+<article class="paper">
+<h3 class="paper__title"><a href="https://www.semanticscholar.org/paper/67475bd33373c1a957b748f8cc886f603698bef0">Large Language Models can be Strong Self-Detoxifiers</a></h3>
+<div class="paper__meta"><span class="badge">arXiv 2024</span> · 7 citation(s)</div>
+<div class="paper__authors">Ching-Yun Ko, Pin-Yu Chen, Payel Das, Youssef Mroueh, Soham Dan…</div>
+<p class="paper__abstract">Reducing the likelihood of generating harmful and toxic output is an essential task when aligning large language models (LLMs). Existing methods mainly rely on training an external reward model (i.e., another language model) or fine-tuning the LLM using self-generated data to inf…</p>
+<div class="paper__surfaced">🧭 surfaced by: platform_dependency_analysis</div>
+</article>
+</details>
+<h2>Sourcing roadmap</h2>
+<p>Where the data is — and isn't. Specific aspects of your brief that the candidate set doesn't cover, with concrete next steps to close each gap:</p>
+<table class="gaps-table">
+<thead><tr><th class="gaps-table__aspect">Aspect</th><th class="gaps-table__gap">What's missing</th><th class="gaps-table__step">Next step</th></tr></thead>
+<tbody>
+<tr><td class="gaps-table__aspect"><b>real-time_adaptive_relationship_language</b></td><td class="gaps-table__gap">None of the candidates focus on datasets with dynamic, real-time conversational patterns where AI adjusts its language based on perceived emotional cues or user responses, which could signal adaptive claims to relationship development.</td><td class="gaps-table__step">Search for datasets or frameworks that emphasize adaptive, on-the-fly conversational adjustments, such as OpenAI&#x27;s Codex-Chats or datasets focused on sentiment-driven agent responses.</td></tr>
+<tr><td class="gaps-table__aspect"><b>multilingual_parasocial_signals</b></td><td class="gaps-table__gap">The candidates overwhelmingly focus on English-language datasets, but the detection target likely applies to AI systems interacting in multiple languages, where claims of intimacy or relational potential could manifest differently.</td><td class="gaps-table__step">Explore multilingual conversational datasets, such as multilingual customer service or chatbot datasets, and annotate for parasocial relationship claims in non-English contexts.</td></tr>
+<tr><td class="gaps-table__aspect"><b>explicit_ai_claims_language</b></td><td class="gaps-table__gap">While candidates often cover emotionally charged conversations or attachment proxies, none specifically track language where an AI claims its own capacity to form a bond (e.g., &#x27;I am here to be your confidant&#x27; or &#x27;You can rely on me like a friend&#x27;).</td><td class="gaps-table__step">Focus on sourcing datasets or creating synthetic examples where the AI explicitly makes meta-statements about its conversational or relational capabilities.</td></tr>
+<tr><td class="gaps-table__aspect"><b>long-term_relationship-dynamics</b></td><td class="gaps-table__gap">There is no clear dataset addressing user behavior or dialog patterns that evolve over extended interactions, which is critical for assessing parasocial attachment building over time rather than in isolated interactions.</td><td class="gaps-table__step">Seek datasets or design longitudinal interaction studies capturing multi-session AI-human interactions to identify trends in perceived relationship development.</td></tr>
+<tr><td class="gaps-table__aspect"><b>behavior-driven attachment_outcomes</b></td><td class="gaps-table__gap">None of the candidates measure or predict specific behavioral outcomes (e.g., emotional dependence or attachment) tied to parasocial interactions fostered by AI systems.</td><td class="gaps-table__step">Collaborate with trust-and-safety researchers or psychologists to find behavioral datasets that track dependency or attachment outcomes in digital interactions.</td></tr>
+</tbody></table>
+<section class="recipe-preview">
+<h2>Next steps — recipe & curate</h2>
+<p><b>31 component(s)</b> would land in the draft recipe (min strategy confidence ≥ 0.5):</p>
+<ul>
+<li><b>18</b> reframing</li>
+<li><b>8</b> signal proxy</li>
+<li><b>5</b> benign baseline</li>
+</ul>
+<p>Estimated row count: <b>~155,000</b> (after the 5,000-row auto-cap on <code>take: all</code> components).</p>
+<table class="recipe-preview__table">
+<thead><tr><th>#</th><th>Component</th><th>Strategy</th><th>Confidence</th><th>Take</th><th>Label kind</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>huggingface:AI-companionship/INTIMA</code></td><td>subset_extraction</td><td>0.90</td><td>all</td><td>—</td></tr>
+<tr><td>2</td><td><code>huggingface:Estwld/esconv_llm</code></td><td>subset_extraction</td><td>0.80</td><td>all</td><td>—</td></tr>
+<tr><td>3</td><td><code>huggingface:kaleem11/blenderbot_v2</code></td><td>subset_extraction</td><td>0.70</td><td>all</td><td>—</td></tr>
+<tr><td>4</td><td><code>huggingface:TheHassanSaud/Anthropic_hh_rlhf_preprocessed</code></td><td>subset_extraction</td><td>0.70</td><td>all</td><td>—</td></tr>
+<tr><td>5</td><td><code>huggingface:kaleem11/blenderbot_v5</code></td><td>subset_extraction</td><td>0.70</td><td>all</td><td>—</td></tr>
+<tr><td>6</td><td><code>huggingface:Dahoas/full-hh-rlhf</code></td><td>subset_extraction</td><td>0.70</td><td>all</td><td>—</td></tr>
+<tr><td>7</td><td><code>huggingface:yatsby/persona_chat</code></td><td>subset_extraction</td><td>0.70</td><td>all</td><td>—</td></tr>
+<tr><td>8</td><td><code>huggingface:Anthropic/hh-rlhf</code></td><td>subset_extraction</td><td>0.60</td><td>all</td><td>—</td></tr>
+<tr><td>9</td><td><code>huggingface:li2017dailydialog/daily_dialog</code></td><td>subset_extraction</td><td>0.60</td><td>all</td><td>—</td></tr>
+<tr><td>10</td><td><code>huggingface:kaleem11/blenderbot_v4</code></td><td>subset_extraction</td><td>0.60</td><td>all</td><td>—</td></tr>
+<tr><td>11</td><td><code>huggingface:heegyu/esconv-KEMI</code></td><td>subset_extraction</td><td>0.60</td><td>all</td><td>—</td></tr>
+<tr><td>12</td><td><code>huggingface:Leogrin/real-toxicity-prompts_first_5K</code></td><td>subset_extraction</td><td>0.60</td><td>all</td><td>—</td></tr>
+<tr><td>13</td><td><code>huggingface:Ashokajou51/ESConv_Sorted</code></td><td>subset_extraction</td><td>0.60</td><td>all</td><td>—</td></tr>
+<tr><td>14</td><td><code>huggingface:hlt-lab/personachat-safe</code></td><td>subset_extraction</td><td>0.60</td><td>all</td><td>—</td></tr>
+<tr><td>15</td><td><code>huggingface:Ahren09/RealToxicityPrompts_test</code></td><td>subset_extraction</td><td>0.60</td><td>all</td><td>—</td></tr>
+<tr><td>16</td><td><code>huggingface:ConvLab/dailydialog</code></td><td>subset_extraction</td><td>0.60</td><td>all</td><td>—</td></tr>
+<tr><td>17</td><td><code>huggingface:itecgo/Topical-Chat-chatml</code></td><td>subset_extraction</td><td>0.50</td><td>all</td><td>—</td></tr>
+<tr><td>18</td><td><code>huggingface:agie-ai/Anthropic-hh-rlhf</code></td><td>subset_extraction</td><td>0.50</td><td>all</td><td>—</td></tr>
+<tr><td>19</td><td><code>huggingface:ShenLab/MentalChat16K</code></td><td>signal_proxy</td><td>0.70</td><td>all</td><td>—</td></tr>
+<tr><td>20</td><td><code>huggingface:sojhung/mental_chat</code></td><td>signal_proxy</td><td>0.70</td><td>all</td><td>—</td></tr>
+<tr><td>21</td><td><code>huggingface:kamruzzaman-asif/MentalChat16K</code></td><td>signal_proxy</td><td>0.70</td><td>all</td><td>—</td></tr>
+<tr><td>22</td><td><code>huggingface:pulseaisystems/better-intimacy-knowledge</code></td><td>signal_proxy</td><td>0.70</td><td>all</td><td>—</td></tr>
+<tr><td>23</td><td><code>huggingface:Devique/mentalchat16k_sharegpt</code></td><td>signal_proxy</td><td>0.70</td><td>all</td><td>—</td></tr>
+<tr><td>24</td><td><code>huggingface:google/Synthetic-Persona-Chat</code></td><td>signal_proxy</td><td>0.60</td><td>all</td><td>—</td></tr>
+<tr><td>25</td><td><code>huggingface:thu-coai/esconv</code></td><td>signal_proxy</td><td>0.60</td><td>all</td><td>—</td></tr>
+<tr><td>26</td><td><code>huggingface:Ahren09/RealToxicityPrompts</code></td><td>signal_proxy</td><td>0.60</td><td>all</td><td>—</td></tr>
+<tr><td>27</td><td><code>huggingface:mvrcii/safety-moderation-benchmark</code></td><td>benign_baseline</td><td>0.80</td><td>all</td><td>ground_truth</td></tr>
+<tr><td>28</td><td><code>huggingface:Dahoas/sft-hh-rlhf</code></td><td>benign_baseline</td><td>0.80</td><td>all</td><td>—</td></tr>
+<tr><td>29</td><td><code>huggingface:AlekseyKorshuk/persona-chat</code></td><td>benign_baseline</td><td>0.70</td><td>all</td><td>—</td></tr>
+<tr><td>30</td><td><code>huggingface:imabhinav007/sakshi-sanskriti-mishra-mental-health-facebook-blenderbot-400M-distill</code></td><td>benign_baseline</td><td>0.70</td><td>all</td><td>—</td></tr>
+<tr><td>31</td><td><code>huggingface:TVRRaviteja/MentalChat16K-split</code></td><td>benign_baseline</td><td>0.60</td><td>all</td><td>—</td></tr>
+</tbody></table>
+<p><b>Run:</b></p>
+<pre><code>datascout curate --from &lt;out&gt;/recipe.draft.yaml --out ./mycorpus</code></pre>
+<p>You'll get <code>train.jsonl</code> / <code>val.jsonl</code> / <code>test.jsonl</code> (leakage-aware splits), <code>recipe.lock.yaml</code> (audit trail), <code>report.md</code> (5-second scorecard), and <code>usage.md</code> (3-line snippets for HF datasets / pandas / raw JSONL).</p>
+<p>Need to refine first? Edit <code>recipe.draft.yaml</code> (drop weak components, tune <code>take</code>, add <code>filter</code> expressions), or re-run with <code>datascout recon ... --review</code> to edit the search directions before discovery.</p>
+</section>
+<footer class="disclaimer">License signals are an SPDX-best-effort guess. Always read the upstream card before redistributing. This is not legal advice.</footer>
+</main>
+</body>
+</html>

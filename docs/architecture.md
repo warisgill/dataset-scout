@@ -119,7 +119,6 @@ src/dataset_scout/
 ├── curate.py               recipe → corpus orchestrator (experimental — see status §10)
 ├── filter_dsl.py           sandboxed filter expression compiler
 ├── dedup.py                MinHash + LSH + leakage-aware splitter
-├── tour.py                 canned demo for `datascout tour`
 ├── stats.py                Wilson score CI helper
 ├── pipeline.py             run_recon orchestrator
 ├── licenses.py             tiny SPDX guesser
@@ -310,7 +309,6 @@ prompts are **snapshot-tested** — drift surfaces as a PR diff.
 | **Embedding label-intent fit** | Dedicated pipeline stage between probes and the assessor. Embeds intent text + a deterministic candidate text (description + canonical row sample) via Azure OpenAI embeddings (`AZURE_OPENAI_EMBEDDING_DEPLOYMENT`). Writes `Scorecard.label_intent_fit`. Cached per text hash; the intent embedding is reused across candidates. |
 | **Coverage-gap report** | What no candidate covers and where to source it. Leads `report.md`/`report.html` when notable. |
 | **Reports** | `report.md` (audit-friendly Markdown) and `report.html` (self-contained HTML, embedded CSS, color-coded strategy badges, no JS) rendered from a shared `ReconReportContext` view-model so the two can't drift. |
-| **`tour`** | Canned no-setup demo. Writes both Markdown and HTML when `--out` is given. |
 | **`inspect`** | Single-candidate deep-dive: schema, Wilson 95% CI label distribution, length stats, license, strategy assessment. |
 | **`curate`** *(experimental — output not yet end-to-end validated)* | Parallel materialisation with deterministic reassembly, MinHash + LSH dedup, leakage-aware splits, sandboxed filter DSL, per-component soft-failure classification (now including `unsupported_source` for Kaggle), full `recipe.lock.yaml` audit trail. The provenance/lockfile contract is defensible; corpus quality has not yet been independently validated against a hand-built reference. |
 | **`judge` + `eval`** *(experimental — same caveat as `curate`)* | Opt-in LLM-as-judge label rescue with sha256-cached verdicts, per-batch resumable checkpoint, multi-judge agreement, explicit-gap promotion, calibration mode with precision floor. Standalone `eval` against any gold corpus. |

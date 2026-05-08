@@ -1062,29 +1062,5 @@ def eval_(
     render_eval_panel(result, console=err)
 
 
-# ─── tour ───────────────────────────────────────────────────────────
-
-
-@app.command(help="30-second demo with canned data — no AOAI or HF access required.")
-def tour(
-    out: Annotated[
-        Path | None,
-        typer.Option(
-            "--out",
-            help="Optional path to also persist the demo artefacts (results.json / recipe.draft.yaml / decomposition.yaml).",
-        ),
-    ] = None,
-) -> None:
-    """Render a fully-populated tour report to stdout."""
-    from dataset_scout.tour import render_tour
-
-    typer.echo(render_tour(out_dir=out))
-    if out is not None:
-        err.print(
-            f"[green]✔[/green] tour artefacts also written to {out} — "
-            "open report.md / recipe.draft.yaml / decomposition.yaml to explore."
-        )
-
-
 if __name__ == "__main__":  # pragma: no cover
     app()

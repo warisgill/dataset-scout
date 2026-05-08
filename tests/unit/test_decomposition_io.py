@@ -48,7 +48,7 @@ def test_write_to_explicit_yml_path(tmp_path: Path):
 
 
 def test_write_to_directory_uses_default_filename(tmp_path: Path):
-    """Recon/tour pass a directory; backwards compatibility."""
+    """Recon passes a directory; backwards compatibility."""
     target = write_decomposition([_direction("a")], tmp_path / "outdir")
     assert target is not None
     assert target.name == "decomposition.yaml"

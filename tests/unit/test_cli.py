@@ -73,11 +73,11 @@ def test_render_help(runner: CliRunner):
 
 
 def test_render_regenerates_reports_from_results_json(runner, tmp_path):
-    """Round-trip: write results.json from a tour result, then re-render."""
+    """Round-trip: write results.json from a demo result, then re-render."""
     from dataset_scout.render import write_results_json
-    from dataset_scout.tour import build_tour_result
+    from tests._fakes.recon_fixture import build_demo_recon_result
 
-    write_results_json(build_tour_result(), tmp_path)
+    write_results_json(build_demo_recon_result(), tmp_path)
     assert (tmp_path / "results.json").exists()
 
     # Remove any pre-existing reports so we know they are produced.
@@ -94,9 +94,9 @@ def test_render_regenerates_reports_from_results_json(runner, tmp_path):
 
 def test_render_html_only(runner, tmp_path):
     from dataset_scout.render import write_results_json
-    from dataset_scout.tour import build_tour_result
+    from tests._fakes.recon_fixture import build_demo_recon_result
 
-    write_results_json(build_tour_result(), tmp_path)
+    write_results_json(build_demo_recon_result(), tmp_path)
     result = runner.invoke(app, ["render", str(tmp_path), "--html-only"])
     assert result.exit_code == 0
     assert (tmp_path / "report.html").exists()
@@ -111,9 +111,9 @@ def test_render_errors_when_results_missing(runner, tmp_path):
 
 def test_render_rejects_conflicting_only_flags(runner, tmp_path):
     from dataset_scout.render import write_results_json
-    from dataset_scout.tour import build_tour_result
+    from tests._fakes.recon_fixture import build_demo_recon_result
 
-    write_results_json(build_tour_result(), tmp_path)
+    write_results_json(build_demo_recon_result(), tmp_path)
     result = runner.invoke(
         app, ["render", str(tmp_path), "--html-only", "--md-only"]
     )
