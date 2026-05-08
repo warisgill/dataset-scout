@@ -204,6 +204,17 @@ datascout inspect huggingface:walledai/XSTest --intent-from datascout-out/result
 
 ## `curate`
 
+> **⚠️ Experimental — output not yet end-to-end validated.**
+> `curate` ships a working implementation with a full audit trail
+> (lockfile, MinHash dedup, leakage-aware splits, per-component
+> soft-failure classification), **but the author hasn't yet
+> personally trained a model on a scout-curated corpus and confirmed
+> quality vs a hand-built reference.** Inspect rows, sanity-check
+> label distributions, and compare against your own gold before
+> training on the output. The same caveat applies to `judge` /
+> `eval` downstream. Bug reports and PRs that harden this pipeline
+> are *very* welcome.
+
 Build a schema-normalized corpus from a recipe.
 
 ```bash
@@ -219,9 +230,11 @@ datascout curate --from recipe.yaml --out ./mycorpus
 | `--max-rows-per-component INT` | — | Cap rows materialized per component for this run. Lowers but never raises the recipe's `take` value — fast iteration on heavy code/text corpora without hand-editing the recipe. |
 | `--max-concurrency INT` | `4` | Number of components materialized in parallel. Most of the per-component cost is HuggingFace `load_dataset` setup (split discovery, parquet header fetch); parallelising 4–8 workers gives ~linear speedup. Lower to 1 for sequential debugging; raise carefully to avoid HF rate limits (especially without `HF_TOKEN`). |
 
-### Status: audit-ready
+### Status: audit trail ready, output quality not yet validated
 
-The pipeline ships a defensible end-to-end build:
+The pipeline ships a defensible end-to-end build — meaning the
+**provenance and lockfile** are audit-ready. The corpus *quality*
+hasn't been independently validated yet. What's wired:
 
 - ✅ Recipe loader, materialisation from HuggingFace, normalized
   JSONL output, lockfile, manifest, report, fingerprint, usage.

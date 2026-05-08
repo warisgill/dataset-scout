@@ -201,6 +201,14 @@ contract.
 
 ## 7. Recipes and lockfiles
 
+> **⚠️ `curate` is experimental.** The pipeline below ships with a
+> full audit trail (MinHash dedup, leakage-aware splits, lockfile,
+> per-component soft-failure classification), but its output hasn't
+> been end-to-end validated against a hand-built reference yet —
+> treat it as a starting point, sanity-check rows and label
+> distributions before training, and please contribute back if you
+> harden it.
+
 The output of `recon` includes a `recipe.draft.yaml`. Edit if you
 want — drop weak components, cap `take`, tighten `filter` — and
 hand it to `datascout curate --from recipe.yaml`.

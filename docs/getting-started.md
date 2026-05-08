@@ -253,6 +253,16 @@ in here, the corpus reflects.
 
 ## 7. Curate the corpus
 
+> **⚠️ Experimental — output not yet end-to-end validated.**
+> `curate` ships a working implementation with a full audit trail
+> (lockfile, MinHash dedup, leakage-aware splits, per-component
+> soft-failure classification) — but the author hasn't yet
+> personally trained a model on a scout-curated corpus and confirmed
+> quality vs a hand-built reference. Inspect rows, sanity-check
+> label distributions, and compare against your own gold before
+> training on the output. Bug reports and PRs that harden this
+> pipeline are very welcome — please file issues or open a PR.
+
 ```bash
 datascout curate --from recipe.yaml --out ./over-refusal-corpus \
     --max-concurrency 6

@@ -61,6 +61,17 @@ datascout curate --from scratch/recon/recipe.draft.yaml \
     --out ./mycorpus
 ```
 
+> **⚠️ `curate` is experimental — output not yet end-to-end validated.**
+> The pipeline ships a working implementation with a full audit
+> trail (lockfile, MinHash dedup, leakage-aware splits, per-component
+> soft-failure classification), **but the author hasn't yet
+> personally trained a model on a scout-curated corpus and confirmed
+> quality vs a hand-built one.** Treat the output as a starting
+> point: inspect rows, sanity-check splits and label distributions,
+> compare against your own gold before training. Bug reports and PRs
+> that harden this pipeline are *very* welcome — please file issues
+> or open a PR.
+
 You end up with a six-file corpus: leakage-aware train / val / test
 splits, a `recipe.lock.yaml` audit trail, a 5-second scorecard report,
 a deterministic fingerprint, and ready-to-paste snippets for HF
@@ -215,6 +226,16 @@ contracts — no shared package, no Python-level dependencies.
 
 ## Honest limits
 
+- **`curate` output is not yet end-to-end validated.** The
+  recon → curate path ships a working implementation with a full
+  audit trail (lockfile, MinHash dedup, leakage-aware splits,
+  per-component soft-failure classification), but the author hasn't
+  yet trained a model on a scout-curated corpus and confirmed
+  quality against a hand-built reference. Treat output as a starting
+  point: inspect rows, sanity-check label distributions, and compare
+  to your own gold before relying on it. The same caveat applies to
+  the opt-in `judge` / `eval` flow downstream of `curate`. Bug
+  reports and PRs that harden this pipeline are very welcome.
 - **Strategy assessment is LLM judgment, not ground truth.** Inspect
   samples before committing.
 - **Discovery is HuggingFace-lexical-bound.** A dataset whose card

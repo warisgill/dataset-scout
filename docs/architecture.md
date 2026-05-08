@@ -116,7 +116,7 @@ src/dataset_scout/
 ├── recipe_draft.py         recipe.draft.yaml emission
 ├── recipe_compose.py       merge multiple recipes (datascout compose)
 ├── inspect_.py             single-candidate deep-dive
-├── curate.py               recipe → corpus orchestrator (audit-ready)
+├── curate.py               recipe → corpus orchestrator (experimental — see status §10)
 ├── filter_dsl.py           sandboxed filter expression compiler
 ├── dedup.py                MinHash + LSH + leakage-aware splitter
 ├── tour.py                 canned demo for `datascout tour`
@@ -312,8 +312,8 @@ prompts are **snapshot-tested** — drift surfaces as a PR diff.
 | **Reports** | `report.md` (audit-friendly Markdown) and `report.html` (self-contained HTML, embedded CSS, color-coded strategy badges, no JS) rendered from a shared `ReconReportContext` view-model so the two can't drift. |
 | **`tour`** | Canned no-setup demo. Writes both Markdown and HTML when `--out` is given. |
 | **`inspect`** | Single-candidate deep-dive: schema, Wilson 95% CI label distribution, length stats, license, strategy assessment. |
-| **`curate`** | Audit-ready: parallel materialisation with deterministic reassembly, MinHash + LSH dedup, leakage-aware splits, sandboxed filter DSL, per-component soft-failure classification (now including `unsupported_source` for Kaggle), full `recipe.lock.yaml` audit trail. |
-| **`judge` + `eval`** | Opt-in LLM-as-judge label rescue with sha256-cached verdicts, per-batch resumable checkpoint, multi-judge agreement, explicit-gap promotion, calibration mode with precision floor. Standalone `eval` against any gold corpus. |
+| **`curate`** *(experimental — output not yet end-to-end validated)* | Parallel materialisation with deterministic reassembly, MinHash + LSH dedup, leakage-aware splits, sandboxed filter DSL, per-component soft-failure classification (now including `unsupported_source` for Kaggle), full `recipe.lock.yaml` audit trail. The provenance/lockfile contract is defensible; corpus quality has not yet been independently validated against a hand-built reference. |
+| **`judge` + `eval`** *(experimental — same caveat as `curate`)* | Opt-in LLM-as-judge label rescue with sha256-cached verdicts, per-batch resumable checkpoint, multi-judge agreement, explicit-gap promotion, calibration mode with precision floor. Standalone `eval` against any gold corpus. |
 | **`compose`** | Merge multiple recipes for shared multi-detection corpora. |
 
 **Paper discovery limits.** Only datasets with a HuggingFace or
