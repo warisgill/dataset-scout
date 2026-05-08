@@ -7,7 +7,7 @@ A walkthrough from zero to a curated corpus, end to end.
 Before you configure anything, see what dataset-scout produces:
 
 ```bash
-uvx dataset-scout tour
+uvx --from git+https://github.com/mdressman/dataset-scout dataset-scout tour
 ```
 
 A complete recon report — decomposition, strategies, coverage gaps,
@@ -16,7 +16,7 @@ detection program, rendered in <1s from canned demo data. No
 HuggingFace token, no Azure OpenAI, no waiting.
 
 ```bash
-uvx dataset-scout tour --out scratch/
+uvx --from git+https://github.com/mdressman/dataset-scout dataset-scout tour --out scratch/
 ```
 
 …also persists `results.json`, `recipe.draft.yaml`,
@@ -51,10 +51,10 @@ this shape of problem.
 Three minutes of one-time setup:
 
 ```bash
-# Install
-uv tool install dataset-scout
+# Install (not on PyPI yet — pull straight from GitHub)
+uv tool install git+https://github.com/mdressman/dataset-scout
 
-# Or in a project: uv add dataset-scout
+# Or in a project: uv add git+https://github.com/mdressman/dataset-scout
 
 # Configure Azure OpenAI (Entra auth — no API keys)
 az login
@@ -134,7 +134,8 @@ What runs:
    declared languages, card-completeness.
 4. **Two-stage shortlist.** Top-k per direction for breadth, then
    global re-rank by multi-direction hits + license sanity + card
-   hygiene caps the assessor input at 15–20 candidates.
+   hygiene caps the assessor input at ~35 candidates (with
+   recalled-name rescues force-included).
 5. **Row-aware strategy assessment.** **For each shortlisted
    candidate, the assessor fetches 8 real rows** before the LLM call.
    Returns 1–4 ranked strategies from the 7-kind taxonomy with
@@ -489,7 +490,7 @@ resume on the next invocation. See
   if it's a perfect semantic fit. List well-known named benchmarks
   in the brief — the decomposer turns them into proper-noun queries.
   See [Concepts §9](concepts.md#9-how-to-write-a-brief).
-- **Recon assesses the top ~20 of ~100 candidates per axis.** The
+- **Recon assesses the top ~35 of ~100 candidates per axis.** The
   cap protects an LLM-cost budget; the rest stay listed but
   unassessed. When an axis comes back empty, sweep the unassessed
   list before declaring a coverage gap.

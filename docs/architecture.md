@@ -40,7 +40,7 @@ Scorecard per candidate
 select_top_for_assessor (stage-1 per-direction, stage-2 quality re-rank)
     │
     ▼
-LLM strategy assessor on top-15-20  ─────► Strategy[] per candidate
+LLM strategy assessor on top ~35    ─────► Strategy[] per candidate
     │       │
     │       └─── source.stream_rows(candidate, take=8)  ←── ROW-AWARE
     │                                                       transforms get
@@ -303,10 +303,10 @@ prompts are **snapshot-tested** — drift surfaces as a PR diff.
 | Capability | What's in |
 |---|---|
 | **Discovery (dataset platforms)** | HuggingFace + Kaggle source plugins, 6 metadata-driven probes, deduplicated multi-source candidate pool, `surfaced_by` provenance. Kaggle is discovery-only — `stream_sample`/`stream_rows` raise `SourceUnsupportedError` and curate classifies the candidate under `unsupported_source` with a hint. |
-| **Discovery (academic papers)** | Pipeline stage querying Semantic Scholar across NeurIPS / ICML / ICLR / SaTML, with arXiv as a targeted fallback for named-benchmark queries when S2 is unavailable or throttled. Round-robin per-direction queries, regex extraction of HF/Kaggle/GitHub dataset URLs from abstracts, deduplicated by arXiv ID, capped at 12 papers per recon. Cited HF / Kaggle datasets are promoted into the candidate pool with `surfaced_by` carrying the paper id. CLI: `--no-papers` opts out. Cached per `(venue-set, year-range, query)`. |
+| **Discovery (academic papers)** | Pipeline stage querying Semantic Scholar across NeurIPS / ICML / ICLR / SaTML, with arXiv as a targeted fallback for named-benchmark queries when S2 is unavailable or throttled. Round-robin per-direction queries, regex extraction of HF/Kaggle/GitHub dataset URLs from abstracts, deduplicated by arXiv ID, capped at 20 papers per recon. Cited HF / Kaggle datasets are promoted into the candidate pool with `surfaced_by` carrying the paper id. CLI: `--no-papers` opts out. Cached per `(venue-set, year-range, query)`. |
 | **Cache** | SQLite WAL at `<ctx.cache_dir>/cache.db`. Namespace-scoped TTL defaults with per-call override; age-based eviction at a 2 GB cap (`DATASET_SCOUT_CACHE_MAX_BYTES`); read paths never write. Wraps decompose, strategy, embedding, and paper-search calls. CLI: `datascout cache info\|prune\|clear`. |
 | **LLM decomposition** | Azure OpenAI / Entra. Brief → 3–7 adjacent search directions. Reusable via `--decomposition-from` for cheap iteration. Cached. Mode-detection falls back to metadata-only with an explicit notice when AOAI is absent. |
-| **Row-aware strategy assessor** | Shortlists the top ~20 candidates per axis (LLM-cost budget); remaining candidates stay in the pool but are unassessed. For each shortlisted candidate: stream 8 real rows → LLM call → 1–4 ranked strategies from the 7-kind taxonomy with rationale, caveats, and a transform spec referencing **actual** columns and label values. Cached. |
+| **Row-aware strategy assessor** | Shortlists the top ~35 candidates per axis (LLM-cost budget; recalled-name rescues force-included); remaining candidates stay in the pool but are unassessed. For each shortlisted candidate: stream 8 real rows → LLM call → 1–4 ranked strategies from the 7-kind taxonomy with rationale, caveats, and a transform spec referencing **actual** columns and label values. Cached. |
 | **Embedding label-intent fit** | Dedicated pipeline stage between probes and the assessor. Embeds intent text + a deterministic candidate text (description + canonical row sample) via Azure OpenAI embeddings (`AZURE_OPENAI_EMBEDDING_DEPLOYMENT`). Writes `Scorecard.label_intent_fit`. Cached per text hash; the intent embedding is reused across candidates. |
 | **Coverage-gap report** | What no candidate covers and where to source it. Leads `report.md`/`report.html` when notable. |
 | **Reports** | `report.md` (audit-friendly Markdown) and `report.html` (self-contained HTML, embedded CSS, color-coded strategy badges, no JS) rendered from a shared `ReconReportContext` view-model so the two can't drift. |
@@ -324,10 +324,11 @@ under parallel runs; arXiv falls back as a second source for
 named-benchmark queries; if both fail, recon proceeds without the
 paper channel rather than blocking.
 
-**Assessor scope.** The shortlist caps at ~20 candidates per axis.
-The remaining candidates stay in the pool but are unassessed. When
-an axis comes back empty, sweep the full candidate list before
-declaring a coverage gap.
+**Assessor scope.** The shortlist caps at ~35 candidates per axis
+(recalled-name rescues — datasets the decomposer named explicitly —
+are force-included on top of that). The remaining candidates stay
+in the pool but are unassessed. When an axis comes back empty,
+sweep the full candidate list before declaring a coverage gap.
 
 ---
 

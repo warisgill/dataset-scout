@@ -31,8 +31,8 @@ The pipeline picks one of two modes at start-up.
 
 | Mode | Trigger | What runs |
 |---|---|---|
-| **Full** | Azure OpenAI configured (`AZURE_OPENAI_ENDPOINT` + `_DEPLOYMENT`) | Brief parsing → LLM decomposition → multi-direction HF search → cheap probes → two-stage shortlist → per-candidate strategy assessor → coverage gaps → ranked report + `recipe.draft.yaml` |
-| **Metadata-only** | AOAI not configured | Brief parsing → single-query HF search → cheap probes (no decomposition, no strategies, no recipe draft) |
+| **Full** | Azure OpenAI configured (`AZURE_OPENAI_ENDPOINT` + `_DEPLOYMENT`) | Brief parsing → LLM decomposition → multi-source search (HuggingFace, Kaggle if creds, plus Semantic Scholar / arXiv paper-search promoting cited HF/Kaggle datasets) → cheap probes → two-stage shortlist → per-candidate strategy assessor → coverage gaps → ranked report + `recipe.draft.yaml` |
+| **Metadata-only** | AOAI not configured | Brief parsing → single-query search (HuggingFace, Kaggle if creds) → cheap probes (no decomposition, no paper search, no strategies, no recipe draft) |
 
 The fallback is **explicit and noisy** — you'll see a notice on stderr
 and a prominent header in `report.md` telling you what to set. No
@@ -44,9 +44,13 @@ See [`configuration.md`](configuration.md) for the env-var setup.
 
 ## 3. Sources, candidates, and metadata
 
-A `Source` plugin (HuggingFace, Kaggle; Papers-With-Code not yet
-wired) yields `Candidate` objects in response to an `Intent` plus a list
-of `DecompositionDirection`s. Each candidate carries:
+A `Source` plugin (HuggingFace, Kaggle) yields `Candidate` objects
+in response to an `Intent` plus a list of `DecompositionDirection`s.
+Academic-paper discovery is a separate pipeline channel (Semantic
+Scholar with arXiv as a targeted fallback for named-benchmark
+queries) that promotes cited HuggingFace / Kaggle datasets into the
+same pool with paper provenance — see `architecture.md` §10 for the
+limits. Each candidate carries:
 
 - **Identity** — `source`, `id`, `revision`.
 - **`metadata`** — a typed `CandidateMetadata` envelope: license raw +

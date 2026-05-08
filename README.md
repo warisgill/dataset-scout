@@ -27,7 +27,7 @@ every claim ties back to a card, a column, and a sample row.
 No HuggingFace token. No Azure OpenAI key. Zero setup:
 
 ```bash
-uvx dataset-scout tour
+uvx --from git+https://github.com/mdressman/dataset-scout dataset-scout tour
 ```
 
 A complete recon report — decomposition, reframings, coverage gaps,
@@ -145,21 +145,24 @@ Two equivalent CLI entry points: `dataset-scout` (formal) and
 `datascout` (recommended short form).
 
 ```bash
-# As a one-off:
-uvx dataset-scout tour
+# As a one-off, straight from GitHub (no clone, no PyPI):
+uvx --from git+https://github.com/mdressman/dataset-scout dataset-scout tour
 
-# Or as a project dependency:
-uv add dataset-scout
+# Or install as a uv tool, alias-friendly:
+uv tool install git+https://github.com/mdressman/dataset-scout
+datascout tour
 
 # Or developer install:
-git clone https://github.com/<your-org>/dataset-scout
+git clone https://github.com/mdressman/dataset-scout
 cd dataset-scout
 uv sync
 uv run datascout --help
 ```
 
-Python 3.11+. Heavy deps (litellm, azure-identity, datasets) load
-lazily — `tour` and metadata-only runs cost no LLM-import overhead.
+Python 3.11+. Not on PyPI yet — `uv add dataset-scout` will work
+once published; until then use the `git+` URL above. Heavy deps
+(litellm, azure-identity, datasets) load lazily — `tour` and
+metadata-only runs cost no LLM-import overhead.
 
 ---
 
@@ -220,7 +223,7 @@ contracts — no shared package, no Python-level dependencies.
   semantically perfect fit. If your construct has well-known named
   benchmarks, list them in the brief — the decomposer turns them
   into proper-noun queries.
-- **Recon assesses the top ~20 of ~100 candidates per axis.** That
+- **Recon assesses the top ~35 of ~100 candidates per axis.** That
   cap protects an LLM-cost budget; the rest stay listed but
   unassessed. When an axis comes back empty, sweep the unassessed
   list before declaring a coverage gap.

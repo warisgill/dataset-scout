@@ -24,7 +24,7 @@ implementation rabbit-holes.
 ## Beat 1 — the no-setup wow (~30 seconds)
 
 ```bash
-uvx dataset-scout tour
+uvx --from git+https://github.com/mdressman/dataset-scout dataset-scout tour
 ```
 
 > *"This is the full output shape — decomposition, reframings,
