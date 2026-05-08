@@ -7,7 +7,7 @@ name = "dataset-scout"
 version = "0.0.1"
 description = "Reconnaissance, reframing, and curation of public datasets for AI detection engineers."
 readme = "README.md"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.14.0a0"
 license = { text = "MIT" }
 authors = [{ name = "dataset-scout contributors" }]
 keywords = ["datasets", "ai-security", "detection", "curation", "huggingface"]
