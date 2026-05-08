@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from typer.testing import CliRunner
 
@@ -9,6 +11,18 @@ from dataset_scout import __version__
 from dataset_scout.cli import app
 
 pytestmark = pytest.mark.unit
+
+
+# Strip ANSI escape codes so help-text substring assertions work
+# regardless of whether rich/typer styled the output. GitHub Actions
+# sets FORCE_COLOR=1 by default, which makes rich emit codes that
+# would otherwise interrupt option names like '--axis' in the
+# rendered output.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _plain(s: str) -> str:
+    return _ANSI_RE.sub("", s).replace("\n", " ")
 
 
 @pytest.fixture
@@ -19,17 +33,18 @@ def runner() -> CliRunner:
 def test_root_help(runner: CliRunner):
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "recon" in result.stdout
-    assert "inspect" in result.stdout
-    assert "curate" in result.stdout
-    assert "judge" in result.stdout
-    assert "eval" in result.stdout
+    out = _plain(result.stdout)
+    assert "recon" in out
+    assert "inspect" in out
+    assert "curate" in out
+    assert "judge" in out
+    assert "eval" in out
 
 
 def test_judge_help(runner: CliRunner):
     result = runner.invoke(app, ["judge", "--help"], terminal_width=200)
     assert result.exit_code == 0
-    out = result.output.replace("\n", " ")
+    out = _plain(result.output)
     assert "--axis" in out
     assert "--judges" in out
     assert "--threshold" in out
@@ -38,20 +53,20 @@ def test_judge_help(runner: CliRunner):
 def test_eval_help(runner: CliRunner):
     result = runner.invoke(app, ["eval", "--help"], terminal_width=200)
     assert result.exit_code == 0
-    out = result.output.replace("\n", " ")
+    out = _plain(result.output)
     assert "--against" in out
 
 
 def test_version(runner: CliRunner):
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert __version__ in result.stdout
+    assert __version__ in _plain(result.stdout)
 
 
 def test_render_help(runner: CliRunner):
     result = runner.invoke(app, ["render", "--help"], terminal_width=200)
     assert result.exit_code == 0
-    out = result.output.replace("\n", " ")
+    out = _plain(result.output)
     assert "results.json" in out
     assert "--html-only" in out
     assert "--md-only" in out
