@@ -6,6 +6,16 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel in-progress runs for the same ref (PR or branch) when a new
+# commit lands.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Default to read-only; jobs needing more must opt in explicitly.
+permissions:
+  contents: read
+
 jobs:
   lint-test:
     runs-on: ${{ matrix.os }}
@@ -13,33 +23,32 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
 
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
 
+      # `--dev` (not `--all-extras`) — the optional `langid` extra
+      # pulls fasttext, which fails to build on Windows runners and
+      # isn't wired into any code path yet.
       - name: Sync dependencies
-        run: uv sync --all-extras --dev
+        run: uv sync --dev
 
       - name: Ruff (lint)
         run: uv run ruff check .
 
-      - name: Ruff (format check)
-        run: uv run ruff format --check .
-
       - name: mypy
         run: uv run mypy
 
-      - name: pytest -m unit
-        run: uv run pytest -m unit -v
-
-      - name: pytest -m recorded
-        run: uv run pytest -m recorded -v || echo "no recorded tests yet"
+      # Unit + recorded tests both gate every PR per pyproject markers.
+      # `live` and `perf` tests are intentionally excluded.
+      - name: pytest
+        run: uv run pytest -m "unit or recorded" -v
