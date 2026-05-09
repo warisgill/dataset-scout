@@ -1,8 +1,7 @@
 """Compose multiple recipes into one.
 
-Recommendation G from the threat-intel walkthrough. Multi-detection
-programs need to merge recipe.draft.yaml outputs from several `recon`
-runs into a single corpus.
+Multi-detection programs need to merge recipe.draft.yaml outputs from
+several `recon` runs into a single corpus.
 
 Semantics:
 - Components dedupe by (source, source_id) — the second occurrence

@@ -395,9 +395,7 @@ class JudgeBlock(BaseModel):
     the *derived* confidence used by downstream filters is recorded as
     :attr:`NormalizedRecord.label_confidence` (for multi-judge runs the
     derived value blends agreement and self-confidence per the rule
-    documented in the M10 design doc).
-
-    Reference: ``M10-judge-design.md`` §4.2.
+    documented inline in :mod:`dataset_scout.judge`).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

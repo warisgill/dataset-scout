@@ -1,11 +1,8 @@
 # Judged corpus shape
 
-Stable JSONL contract for downstream consumers (e.g.
-[protozoa-gym](https://github.com/mdressman/protozoa-gym)) that ingest
-scout-produced corpora.
-
-Reference: `M10-judge-design.md` §4 (schema additions). This page is
-the public surface; it changes only with explicit deprecation notice.
+Stable JSONL contract for downstream consumers that ingest
+scout-produced corpora. This page is the public surface; it changes
+only with explicit deprecation notice.
 
 ## File format
 
@@ -64,8 +61,8 @@ or `"ambiguous"`. Mapped to scout's three-class `label` as follows:
 The *derived* row-level confidence (used by downstream filtering) is
 the top-level `label_confidence` field, **not** `judge.confidence`. For
 single-judge runs they are equal; for multi-judge runs `label_confidence`
-blends agreement with self-confidence per the rule in
-`M10-judge-design.md` §5.
+blends agreement with self-confidence per the rule documented inline
+in `dataset_scout.judge`.
 
 ## Stable row identity (M9-min)
 
@@ -101,12 +98,11 @@ without needing to inspect `judge.verdict` directly.
 
 ## What scout deliberately does *not* emit
 
-Scope-clarifying non-features (see `M10-judge-design.md` §11):
+Scope-clarifying non-features:
 
-- Scout does not emit a `_ground_truth.enrichment_axes[<axis>]` block
-  in the gym shape. Consumers that previously read that shape adapt
-  scout's flat record format directly — same as they would for any
-  custom dataset.
+- Scout does not emit any framework-specific enrichment-axis envelope.
+  Consumers should adapt scout's flat record format directly — the
+  same as they would for any custom dataset.
 - Scout does not coordinate prompt template versions, cache keys, or
   judge model defaults with any other tool. Each consumer is free to
   read what it needs from the fields above.

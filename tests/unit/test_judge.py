@@ -1,8 +1,7 @@
-"""Unit tests for the M10 LLM-as-judge module.
+"""Unit tests for the LLM-as-judge module.
 
 Covers single-judge core (cache + strict promotion + soft failures),
 checkpoint resumability, and multi-judge agreement aggregation.
-Reference: ``M10-judge-design.md``.
 """
 
 from __future__ import annotations

@@ -112,11 +112,10 @@ def eval(
     axis: str | None = None,
     ctx: ScoutContext | None = None,
 ) -> object:
-    """Compare a judged corpus against a gold corpus (M10).
+    """Compare a judged corpus against a gold corpus.
 
-    Reference: ``M10-judge-design.md`` §8. Returns an
-    :class:`dataset_scout.eval_.EvalResult` with per-axis P/R/F1 +
-    confusion matrix + coverage.
+    Returns an :class:`dataset_scout.eval_.EvalResult` with per-axis
+    P/R/F1 + confusion matrix + coverage.
     """
     from pathlib import Path as _Path
 
@@ -145,10 +144,9 @@ def judge(
     re_judge_all: bool = False,
     dry_run: bool = False,
 ) -> object:
-    """Run the LLM-as-judge label-rescue pass over a corpus (M10).
+    """Run the LLM-as-judge label-rescue pass over a corpus.
 
-    Reference: ``M10-judge-design.md`` §3 (CLI surface) and §5
-    (promotion rule). The CLI verb is a thin wrapper over
+    The CLI verb is a thin wrapper over
     :func:`dataset_scout.judge.run_judge`.
     """
     from pathlib import Path as _Path

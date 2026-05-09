@@ -12,8 +12,7 @@ Used by:
    when ``--calibrate-against`` is passed.
 2. Post-hoc comparison from the CLI (``datascout eval``).
 
-Same library/CLI separation as the rest of scout. Reference:
-``M10-judge-design.md`` §8.
+Same library/CLI separation as the rest of scout.
 """
 
 from __future__ import annotations

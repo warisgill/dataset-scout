@@ -1,4 +1,4 @@
-"""LLM-as-judge label rescue (M10).
+"""LLM-as-judge label rescue.
 
 Promotes per-row labels from "unknown / weakly inferred" to "judged with
 stated confidence" by calling an Azure OpenAI chat deployment per row,
@@ -6,9 +6,7 @@ parsing a strict JSON verdict into a :class:`JudgeBlock`, and applying
 an explicit-gap promotion rule: only ``positive`` / ``negative`` verdicts
 at-or-above the configured threshold rewrite the row's label.
 
-Reference: ``M10-judge-design.md`` (in particular §3 CLI surface,
-§4 schema, §5 promotion rule, §6 cache, §9 resumability, §10 failure
-modes). The CLI verb is a thin wrapper over :func:`run_judge`.
+The CLI verb is a thin wrapper over :func:`run_judge`.
 
 Network-free at import time. Heavy imports (``litellm``, ``azure-identity``)
 are deferred into the chat-client call site so unit tests never pay for

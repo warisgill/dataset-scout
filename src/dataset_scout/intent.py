@@ -312,8 +312,8 @@ _SMELL_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 
 # Length above which a brief is "verbose enough that the search has
 # trouble finding HF candidates without an LLM decomposer." Empirically
-# tuned during the threat-intel walkthrough — ~250 characters is where
-# briefs shift from "compact dataset request" to "kitchen sink."
+# ~250 characters is where briefs shift from "compact dataset request"
+# to "kitchen sink."
 _VERBOSE_BRIEF_THRESHOLD = 250
 
 

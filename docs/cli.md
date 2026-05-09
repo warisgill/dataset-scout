@@ -285,7 +285,7 @@ Buckets:
 Promote weak labels to high-confidence ones by asking an LLM judge a
 single labeling question (the "axis"). The judge does not score the
 output of any downstream system — it labels rows of an existing
-corpus. Reference: `M10-judge-design.md`.
+corpus.
 
 ```bash
 datascout judge ./mycorpus --axis psych_harm \

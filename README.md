@@ -231,24 +231,6 @@ See [`docs/cli.md`](docs/cli.md) for the full surface.
 
 ---
 
-## Related projects
-
-dataset-scout is one piece of a small toolkit, but it ships and runs
-standalone. Each project below interoperates only via published JSONL
-contracts — no shared package, no Python-level dependencies.
-
-- **[protozoa-gym](https://github.com/mdressman/protozoa-gym)** — eval
-  orchestration for AISP detection enrichments. Reads scout-produced
-  corpora via its `scout_corpus` adapter; see
-  [`docs/judged-corpus-shape.md`](docs/judged-corpus-shape.md) for the
-  spec.
-- **[tribunal](https://github.com/mdressman/tribunal)** — multi-agent
-  LLM-as-judge framework for *output* evaluation (different question
-  shape than scout's row-classification judge). A natural future
-  engine for gym's eval-judge step.
-
----
-
 ## Honest limits
 
 - **`curate` output is not yet end-to-end validated.** The

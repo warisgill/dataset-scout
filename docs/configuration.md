@@ -107,8 +107,7 @@ workspace. Bumping scout's internal `template_version` invalidates
 the cache deliberately — that's a scout-internal concern and is
 **not** coordinated with any other tool. See
 [`judged-corpus-shape.md`](judged-corpus-shape.md) for the public
-record-level surface; see `M10-judge-design.md` (in session-state)
-for the cache-key derivation detail.
+record-level surface.
 
 ---
 

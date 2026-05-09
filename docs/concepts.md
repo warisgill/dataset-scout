@@ -178,8 +178,7 @@ gaps over low-confidence guesses**:
 - For multi-judge runs (`--judges 3 --agreement majority` or
   `--judges 5 --agreement unanimous`), the derived `label_confidence`
   blends judge agreement with the agreeing judges' mean self-rated
-  confidence; the formula is recorded in
-  `M10-judge-design.md` §5 and the chosen `agreement` mode is
+  confidence; the formula and the chosen `agreement` mode are
   written into the lockfile so the derivation is reproducible.
 - Below threshold or on `ambiguous`, the row keeps its original
   label and `label_kind`, but the `judge` block is still attached so
@@ -389,71 +388,3 @@ spec ("describes detector inputs", "describes detector outputs",
 "describes the train/eval plan"). When you see it, tighten the brief.
 
 See [`architecture.md`](architecture.md) for the pipeline detail.
-
----
-
-## 10. Where dataset-scout sits in your stack
-
-Scout is one piece of a three-tool ecosystem with a deliberately
-narrow boundary. The boundary is what keeps each tool small and
-honest.
-
-```
-   ┌─────────────────────────────────────────────────────────────┐
-   │                        dataset-scout                        │
-   │      (this project — discover, reframe, curate, judge)      │
-   │                                                             │
-   │     brief → decompose → recon → curate → judge → eval       │
-   │                                                             │
-   │       Output: audit-ready JSONL with full provenance        │
-   └─────────────────────────────────────────────────────────────┘
-                              │  JSONL  (docs/judged-corpus-shape.md)
-                              ▼
-   ┌─────────────────────────────────────────────────────────────┐
-   │                       protozoa-gym                          │
-   │       (downstream — eval orchestration for AISP             │
-   │        detection enrichments)                               │
-   │                                                             │
-   │   protozoa_gym.sources.scout_corpus  reads the JSONL.       │
-   │   No Python-level dependency on scout. Schema-only          │
-   │   coupling.                                                 │
-   └─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-   ┌─────────────────────────────────────────────────────────────┐
-   │                          tribunal                           │
-   │   (multi-agent LLM-as-judge framework — operates on         │
-   │    candidate **outputs**, not dataset rows)                 │
-   │                                                             │
-   │   Different question shape than scout's M10. Natural        │
-   │   future engine for gym's eval-judge step. Scout does       │
-   │   not depend on tribunal.                                   │
-   └─────────────────────────────────────────────────────────────┘
-```
-
-### Why scout has its own judge if tribunal exists
-
-The two judges answer different questions:
-
-| | Question | Verdict | Per-call cost |
-|---|---|---|---|
-| **scout (M10)** | "Is this row a positive instance of axis X?" | `positive / negative / ambiguous` over a single row | Low — one LLM call per row, often thousands of rows. |
-| **tribunal** | "Given this prompt and these candidate outputs, which is best / does it pass?" | `pass / fail / uncertain` over candidates | High — multi-agent debate, often multi-round. |
-
-Scout's purpose-built ~400-LOC judge is the right fit for cheap
-single-shot row classification. Tribunal's richer
-multi-agent / debate / IPI-TOV machinery is the right fit for
-high-stakes candidate-output evaluation. They do not overlap.
-
-### Decoupling stance
-
-No shared package. No shared schema spec beyond the public
-`docs/judged-corpus-shape.md` JSONL contract. No shared cache. No
-shared prompt-template version coordination. No Python-level imports
-either direction. Each project ships and runs independently and is
-independently open-sourceable.
-
-If you are building a downstream consumer, you do **not** need to
-take scout as a dependency — read the JSONL contract and write a
-small adapter the same way `protozoa-gym` did
-(`protozoa_gym/sources/scout_corpus.py`, ~340 lines).
